@@ -9,6 +9,59 @@ import cv2
 from config import config
 
 
+
+def get_files(path, keys=[], return_fullpath=True, sort=True, sorting_key=None, recursive=True, get_dirs=False, ignore_suffix=False):
+    """Get all the file name under the given path with assigned keys
+    Args:
+        path: (str)
+        keys: (list, str)
+        return_fullpath: (bool)
+        sort: (bool)
+        sorting_key: (func)
+        recursive: The flag for searching path recursively or not(bool)
+    Return:
+        file_list: (list)
+    """
+    file_list = []
+    assert isinstance(keys, (list, str))
+    if isinstance(keys, str): keys = [keys]
+    # Rmove repeated keys
+    keys = list(set(keys))
+
+    def push_back_filelist(root, f, file_list, is_fullpath):
+        f = f[:-4] if ignore_suffix else f
+        if is_fullpath:
+            file_list.append(os.path.join(root, f))
+        else:
+            file_list.append(f)
+
+    for i, (root, dirs, files) in enumerate(os.walk(path)):
+        # print(root, dirs, files)
+        if not recursive:
+            if i > 0: break
+
+        if get_dirs:
+            files = dirs
+            
+        for j, f in enumerate(files):
+            if keys:
+                for key in keys:
+                    if key in f:
+                        push_back_filelist(root, f, file_list, return_fullpath)
+            else:
+                push_back_filelist(root, f, file_list, return_fullpath)
+
+    if file_list:
+        if sort: file_list.sort(key=sorting_key)
+    else:
+        f = 'dir' if get_dirs else 'file'
+        if keys: 
+            logging.warning(f'No {f} exist with key {keys}.') 
+        else: 
+            logging.warning(f'No {f} exist.') 
+    return file_list
+
+
 def load_itk_image(filename):
     """Return img array and [z,y,x]-ordered origin and spacing
     """
@@ -56,7 +109,9 @@ def arr2mask(arr, reso):
     return mask
 
 def arrs2mask(img_dir, ctr_arr_dir, save_dir):
-    pids = [f[:-4] for f in os.listdir(img_dir) if f.endswith('.mhd')]
+    # pids = [f[:-4] for f in os.listdir(img_dir) if f.endswith('.mhd')]
+    data_path_list = get_files(img_dir, 'mhd')
+
     cnt = 0
     consensus = {1: 0, 2: 0, 3: 0, 4: 0}
     
@@ -64,9 +119,18 @@ def arrs2mask(img_dir, ctr_arr_dir, save_dir):
         if not os.path.exists(os.path.join(save_dir, str(k))):
             os.makedirs(os.path.join(save_dir, str(k)))
 
-    for pid in tqdm(pids, total=len(pids)):
-        img, origin, spacing = load_itk_image(os.path.join(img_dir, '%s.mhd' % (pid)))
-        ctr_arrs = np.load(os.path.join(ctr_arr_dir, '%s.npy' % (pid)))
+    # for pid in tqdm(pids, total=len(pids)):
+    keep = 0
+    num_nodule = 0
+    num_file = len(data_path_list)
+    zero_pid = []
+    for idx, data_path in enumerate(data_path_list):
+        folder, filename = os.path.split(data_path)
+        _, subset = os.path.split(folder)
+        pid = filename[:-4]
+        print(f'{idx}/{num_file} {pid}')
+        img, origin, spacing = load_itk_image(os.path.join(img_dir, subset, filename))
+        ctr_arrs = np.load(os.path.join(ctr_arr_dir, '%s.npy' % (pid)), allow_pickle=True)
         cnt += len(ctr_arrs)
 
         nodule_masks = []
@@ -129,16 +193,22 @@ def arrs2mask(img_dir, ctr_arr_dir, save_dir):
         num[num > 4] = 4
         
         if len(num) == 0:
+            zero_pid.append(pid)
             continue
         # Iterate from the nodules with most consensus
         for n in range(num.max(), 0, -1):
+            if n != 3:
+                continue
             mask = np.zeros(img.shape, dtype=np.uint8)
             
             for i, index in enumerate(np.where(num >= n)[0]):
                 same_nodules = masks[index]
                 m = np.logical_or.reduce(same_nodules)
                 mask[m] = i + 1
-            nrrd.write(os.path.join(save_dir, str(n), pid), mask)
+            # nrrd.write(os.path.join(save_dir, str(n), pid), mask)
+            keep += 1
+            num_nodule += len(num)
+            # np.save(os.path.join(save_dir, str(n), f'{pid}.npy'), mask)
         
 #         for i, same_nodules in enumerate(masks):
 #             cons = len(same_nodules)
@@ -150,8 +220,15 @@ def arrs2mask(img_dir, ctr_arr_dir, save_dir):
         
     print(consensus)
     print(cnt)
+    print(keep)
+    print(num_nodule)
+
 
 if __name__ == '__main__':
+    # f3 = get_files(rf'C:\Users\test\Desktop\Leon\Datasets\masks_test\3', 'npy', return_fullpath=False)
+    # f4 = get_files(rf'C:\Users\test\Desktop\Leon\Datasets\masks_test\4', 'npy', return_fullpath=False)
+    # print(len(list(set(f3)-set(f4))))
+
     annos_dir = config['annos_dir']
     img_dir = config['data_dir']
     ctr_arr_save_dir = config['ctr_arr_save_dir']
@@ -160,5 +237,5 @@ if __name__ == '__main__':
     os.makedirs(ctr_arr_save_dir, exist_ok=True)
     os.makedirs(mask_save_dir, exist_ok=True)
 
-    annotation2masks(annos_dir, ctr_arr_save_dir)
+    # annotation2masks(annos_dir, ctr_arr_save_dir)
     arrs2mask(img_dir, ctr_arr_save_dir, mask_save_dir)
