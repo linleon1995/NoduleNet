@@ -79,6 +79,7 @@ def xml2mask(xml_file):
     header, annos = parse(xml_file)
 
     ctr_arrs = []
+    total_malignancy = []
     for i, reader in enumerate(annos):
         for j, nodule in enumerate(reader.nodules):
             ctr_arr = []
@@ -86,9 +87,14 @@ def xml2mask(xml_file):
                 z = roi.z
                 for roi_xy in roi.roi_xy:
                     ctr_arr.append([z, roi_xy[1], roi_xy[0]])
+            malignancy = nodule.characteristics.malignancy
+            total_malignancy.append(malignancy)
+            # ctr_arr.insert(0, [malignancy])
+            # total_malignancy.append(malignancy)
             ctr_arrs.append(ctr_arr)
             
     seriesuid = header.series_instance_uid
+    ctr_arrs = [total_malignancy, ctr_arrs]
     return seriesuid, ctr_arrs
 
 
@@ -131,9 +137,12 @@ def arrs2mask(img_dir, ctr_arr_dir, save_dir):
         print(f'{idx}/{num_file} {pid}')
         img, origin, spacing = load_itk_image(os.path.join(img_dir, subset, filename))
         ctr_arrs = np.load(os.path.join(ctr_arr_dir, '%s.npy' % (pid)), allow_pickle=True)
-        cnt += len(ctr_arrs)
 
         nodule_masks = []
+        # annot_malignancy = []
+        annot_malignancy = ctr_arrs[0]
+        ctr_arrs = ctr_arrs[1]
+        cnt += (len(ctr_arrs)-1)
         for ctr_arr in ctr_arrs:
             z_origin = origin[0]
             z_spacing = spacing[0]
@@ -148,19 +157,23 @@ def arrs2mask(img_dir, ctr_arr_dir, save_dir):
                 ctr = np.array([ctr], dtype=np.int32)
                 mask[z] = cv2.fillPoly(mask[z], ctr, color=(1,) * 1)
             nodule_masks.append(mask)
+            # annot_malignancy.append(annot_m)
 
         i = 0
         visited = []
         d = {}
         masks = []
+        total_malignancy = []
         while i < len(nodule_masks):
             # If mached before, then no need to create new mask
             if i in visited:
                 i += 1
                 continue
             same_nodules = []
+            malignancy = []
             mask1 = nodule_masks[i]
             same_nodules.append(mask1)
+            malignancy.append(annot_malignancy[i])
             d[i] = {}
             d[i]['count'] = 1
             d[i]['iou'] = []
@@ -176,10 +189,12 @@ def arrs2mask(img_dir, ctr_arr_dir, save_dir):
                 if iou > 0.4:
                     visited.append(j)
                     same_nodules.append(mask2)
+                    malignancy.append(annot_malignancy[j])
                     d[i]['count'] += 1
                     d[i]['iou'].append(iou)
 
             masks.append(same_nodules)
+            total_malignancy.append(malignancy)
             i += 1
 
         for k, v in d.items():
@@ -203,12 +218,19 @@ def arrs2mask(img_dir, ctr_arr_dir, save_dir):
             
             for i, index in enumerate(np.where(num >= n)[0]):
                 same_nodules = masks[index]
+                nodule_malignancy = np.mean(total_malignancy[index])
+                if nodule_malignancy >= 3:
+                    nodule_malignancy = 2
+                else:
+                    nodule_malignancy = 1
                 m = np.logical_or.reduce(same_nodules)
-                mask[m] = i + 1
+                mask[m] = nodule_malignancy
+                # mask[m] = i + 1
+
             # nrrd.write(os.path.join(save_dir, str(n), pid), mask)
             keep += 1
             num_nodule += len(num)
-            # np.save(os.path.join(save_dir, str(n), f'{pid}.npy'), mask)
+            np.save(os.path.join(save_dir, str(n), f'{pid}.npy'), mask)
         
 #         for i, same_nodules in enumerate(masks):
 #             cons = len(same_nodules)

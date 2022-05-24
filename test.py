@@ -25,19 +25,20 @@ from config import config
 from utils.visualize import draw_gt, draw_pred, generate_image_anim
 from utils.util import dice_score_seperate, get_contours_from_masks, merge_contours, hausdorff_distance
 from utils.util import onehot2multi_mask, normalize, pad2factor, load_dicom_image, crop_boxes2mask_single, npy2submission
+from utils.util import average_precision
 import pandas as pd
 from evaluationScript.noduleCADEvaluationLUNA16 import noduleCADEvaluation
 
 plt.rcParams['figure.figsize'] = (24, 16)
 plt.switch_backend('agg')
 this_module = sys.modules[__name__]
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--net', '-m', metavar='NET', default=config['net'],
                     help='neural net')
-parser.add_argument("mode", type=str,
+parser.add_argument("--mode", type=str, default='eval',
                     help="you want to test or val")
 parser.add_argument("--weight", type=str, default=config['initial_checkpoint'],
                     help="path to model weights to be used")
@@ -93,7 +94,7 @@ def main():
 
 def eval(net, dataset, save_dir=None):
     net.set_mode('eval')
-    net.use_mask = False
+    net.use_mask = True
     net.use_rcnn = True
     aps = []
     dices = []
@@ -102,6 +103,9 @@ def eval(net, dataset, save_dir=None):
 
     print('Total # of eval data %d' % (len(dataset)))
     for i, (input, truth_bboxes, truth_labels, truth_masks, mask, image) in enumerate(dataset):
+        if i<42:
+            print(i)
+            continue
         try:
             D, H, W = image.shape
             pid = dataset.filenames[i]

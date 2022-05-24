@@ -28,7 +28,7 @@ data_config = {
 
     # Directory for saving intermediate results
     'ctr_arr_save_dir': os.path.join(BASE, rf'annotation/mask_test'),
-    'mask_save_dir': os.path.join(BASE, rf'masks_test'),
+    'mask_save_dir': os.path.join(BASE, rf'LIDC-preprocess\masks_test'),
     'mask_exclude_save_dir': os.path.join(BASE, rf'masks_exclude_test'),
 
 
@@ -113,7 +113,7 @@ def lr_shedule(epoch, init_lr=0.01, total=200):
 
 train_config = {
     'net': 'NoduleNet',
-    'batch_size': 16,
+    'batch_size': 6,
 
     'lr_schedule': lr_shedule,
     'optimizer': 'SGD',
@@ -121,14 +121,15 @@ train_config = {
     'weight_decay': 1e-4,
 
     'epochs': 200,
-    'epoch_save': 1,
-    'epoch_rcnn': 65,
-    'epoch_mask': 80,
+    'epoch_save': 2,
+    'epoch_rcnn': 5,
+    'epoch_mask': 8,
     'num_workers': 8,
 
     'train_set_list': ['split/3_train.csv'],
     'val_set_list': ['split/3_val.csv'],
-    'test_set_name': 'split/3_val.csv',
+    # 'test_set_name': 'split/3_val.csv',
+    'test_set_name': 'split/cross_val/0_val.csv',
     'label_types': ['mask'],
     'DATA_DIR': data_config['preprocessed_data_dir'],
     'ROOT_DIR': os.getcwd()
@@ -144,7 +145,7 @@ elif train_config['optimizer'] == 'RMSprop':
 
 train_config['RESULTS_DIR'] = os.path.join(train_config['ROOT_DIR'], 'results')
 train_config['out_dir'] = os.path.join(train_config['RESULTS_DIR'], 'cross_val_test')
-train_config['initial_checkpoint'] = None #train_config['out_dir'] + '/model/027.ckpt'
+train_config['initial_checkpoint'] = 'results/200.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
 
 
 config = dict(data_config, **net_config)

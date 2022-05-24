@@ -7,6 +7,8 @@ except ImportError:
 import random
 from net.layer.rpn_nms import rpn_encode
 from torch.autograd import Variable
+import torch
+import numpy as np
 
 
 def make_one_rpn_target(cfg, mode, input, window, truth_box, truth_label):

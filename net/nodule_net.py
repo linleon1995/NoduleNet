@@ -233,9 +233,9 @@ class MaskHead(nn.Module):
         for detection in detections:
             b, z_start, y_start, x_start, z_end, y_end, x_end, cat = detection
 
-            up1 = f_4[b, :, z_start / 4:z_end / 4, y_start / 4:y_end / 4, x_start / 4:x_end / 4].unsqueeze(0)
+            up1 = f_4[b, :, z_start // 4:z_end // 4, y_start // 4:y_end // 4, x_start // 4:x_end // 4].unsqueeze(0)
             up2 = self.up2(up1)
-            up2 = self.back2(torch.cat((up2, f_2[b, :, z_start / 2:z_end / 2, y_start / 2:y_end / 2, x_start / 2:x_end / 2].unsqueeze(0)), 1))
+            up2 = self.back2(torch.cat((up2, f_2[b, :, z_start // 2:z_end // 2, y_start // 2:y_end // 2, x_start // 2:x_end // 2].unsqueeze(0)), 1))
             up3 = self.up3(up2)
             im = img[b, :, z_start:z_end, y_start:y_end, x_start:x_end].unsqueeze(0)
             up3 = self.back3(torch.cat((up3, im), 1))
@@ -247,8 +247,10 @@ class MaskHead(nn.Module):
             mask[z_start:z_end, y_start:y_end, x_start:x_end] = logits
             mask = mask.unsqueeze(0)
             out.append(mask)
-
+            
+        print(len(out))
         out = torch.cat(out, 0)
+        print(out.shape)
 
         return out
 
