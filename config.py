@@ -12,10 +12,10 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed_all(SEED)
 
 # Preprocessing using preserved HU in dilated part of mask
-BASE = rf'C:\Users\test\Desktop\Leon\Datasets' # make sure you have the ending '/'
+BASE = rf'/data' # make sure you have the ending '/'
 data_config = {
     # put combined LUNA16 .mhd files into one folder
-    'data_dir': os.path.join(BASE, rf'LUNA16\data'),
+    'data_dir': os.path.join(BASE, rf'LUNA16'),
 
     # directory for putting all preprocessed results for training to this path
     'preprocessed_data_dir': os.path.join(BASE, rf'LIDC-preprocess'),
@@ -27,9 +27,9 @@ data_config = {
     'lung_mask_dir': os.path.join(BASE, rf'LUNA16/seg-lungs-LUNA16'),
 
     # Directory for saving intermediate results
-    'ctr_arr_save_dir': os.path.join(BASE, rf'annotation/mask_test'),
-    'mask_save_dir': os.path.join(BASE, rf'masks_test'),
-    'mask_exclude_save_dir': os.path.join(BASE, rf'masks_exclude_test'),
+    'ctr_arr_save_dir': os.path.join(BASE, rf'LIDC-preprocess/annotations'),
+    'mask_save_dir': os.path.join(BASE, rf'LIDC-preprocess/masks_test'),
+    'mask_exclude_save_dir': os.path.join(BASE, rf'LIDC-preprocess/masks_exclude_test'),
 
 
     'roi_names': ['nodule'],
