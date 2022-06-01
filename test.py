@@ -103,9 +103,12 @@ def eval(net, dataset, save_dir=None):
 
     print('Total # of eval data %d' % (len(dataset)))
     for i, (input, truth_bboxes, truth_labels, truth_masks, mask, image) in enumerate(dataset):
-        if i<42:
+        if i<23:
             print(i)
             continue
+        elif i>23:
+            break
+        # print('bb', torch.sum(input))
         try:
             D, H, W = image.shape
             pid = dataset.filenames[i]
@@ -130,6 +133,10 @@ def eval(net, dataset, save_dir=None):
 
                 # compute average precisions
                 ap, dice = average_precision(gt_mask, pred_mask)
+                # TODO: 
+                true_objects = len(np.unique(gt_mask)) - 1
+                pred_objects = len(np.unique(pred_mask)) - 1
+
                 aps.append(ap)
                 dices.extend(dice.tolist())
                 print(ap)
@@ -140,6 +147,18 @@ def eval(net, dataset, save_dir=None):
                 pred_mask = np.zeros((input[0].shape))
             
             np.save(os.path.join(save_dir, '%s.npy' % (pid)), pred_mask)
+            # # TODO: 
+            # import matplotlib.pyplot as plt
+            # b_pred_mask = np.where(pred_mask>0, 1, 0)
+            # b_gt_mask = np.where(gt_mask[0]>0, 1, 0)
+            # for j in range(pred_mask.shape[0]):
+            #     x = b_pred_mask[j]
+            #     if np.sum(x):
+            #         print(j)
+            #         plt.imshow(image[j], 'gray')
+            #         plt.imshow(x+b_gt_mask[j]*2, alpha=0.2, vmin=0, vmax=3)
+            #         plt.title(f'GT {true_objects} Pred {pred_objects} Dice {dice[0]}')
+            #         plt.savefig(f'results/image/{i}-{j}.png')
 
             print('rpn', rpns.shape)
             print('detection', detections.shape)

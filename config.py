@@ -13,7 +13,7 @@ torch.cuda.manual_seed_all(SEED)
 
 # Preprocessing using preserved HU in dilated part of mask
 BASE = rf'C:\Users\test\Desktop\Leon\Datasets' # make sure you have the ending '/'
-data_config = {
+data_config_LIDC = {
     # put combined LUNA16 .mhd files into one folder
     'data_dir': os.path.join(BASE, rf'LUNA16\data'),
 
@@ -29,6 +29,32 @@ data_config = {
     # Directory for saving intermediate results
     'ctr_arr_save_dir': os.path.join(BASE, rf'annotation/mask_test'),
     'mask_save_dir': os.path.join(BASE, rf'LIDC-preprocess\masks_test'),
+    'mask_exclude_save_dir': os.path.join(BASE, rf'masks_exclude_test'),
+
+
+    'roi_names': ['nodule'],
+    'crop_size': [128, 128, 128],
+    'bbox_border': 8,
+    'pad_value': 170,
+    # 'jitter_range': [0, 0, 0],
+}
+
+data_config= {
+    # put combined LUNA16 .mhd files into one folder
+    'data_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/merge'),
+
+    # directory for putting all preprocessed results for training to this path
+    'preprocessed_data_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/result'),
+
+    # put annotation downloaded from LIDC to this path
+    'annos_dir': os.path.join(BASE, rf'LIDC/tcia-lidc-xml'),
+
+    # put lung mask downloaded from LUNA16 to this path
+    'lung_mask_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/nodulenet_lung_mask'),
+
+    # Directory for saving intermediate results
+    'ctr_arr_save_dir': os.path.join(BASE, rf'annotation/mask_test'),
+    'mask_save_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/merge'),
     'mask_exclude_save_dir': os.path.join(BASE, rf'masks_exclude_test'),
 
 
@@ -128,8 +154,8 @@ train_config = {
 
     'train_set_list': ['split/3_train.csv'],
     'val_set_list': ['split/3_val.csv'],
-    # 'test_set_name': 'split/3_val.csv',
-    'test_set_name': 'split/cross_val/0_val.csv',
+    'test_set_name': 'split/3_val.csv',
+    # 'test_set_name': 'split/cross_val/0_val.csv',
     'label_types': ['mask'],
     'DATA_DIR': data_config['preprocessed_data_dir'],
     'ROOT_DIR': os.getcwd()

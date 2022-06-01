@@ -247,10 +247,8 @@ class MaskHead(nn.Module):
             mask[z_start:z_end, y_start:y_end, x_start:x_end] = logits
             mask = mask.unsqueeze(0)
             out.append(mask)
-            
-        print(len(out))
+        
         out = torch.cat(out, 0)
-        print(out.shape)
 
         return out
 
@@ -363,7 +361,9 @@ class NoduleNet(nn.Module):
             self.rpn_proposals = rpn_nms(self.cfg, self.mode, inputs, self.rpn_window,
                   self.rpn_logits_flat, self.rpn_deltas_flat)
             # print 'length of rpn proposals', self.rpn_proposals.shape
-
+        # print(inputs, self.rpn_window, self.rpn_logits_flat, self.rpn_deltas_flat)
+        # print(inputs, np.sum(self.rpn_window), torch.sum(self.rpn_logits_flat), torch.sum(self.rpn_deltas_flat))
+        # print('aa', torch.sum(inputs), torch.sum(fs))
         if self.mode in ['train', 'valid']:
             # self.rpn_proposals = torch.zeros((0, 8)).cuda()
             self.rpn_labels, self.rpn_label_assigns, self.rpn_label_weights, self.rpn_targets, self.rpn_target_weights = \

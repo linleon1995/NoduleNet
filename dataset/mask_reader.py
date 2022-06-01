@@ -11,6 +11,59 @@ from scipy.ndimage.measurements import label
 import nrrd
 from utils.util import masks2bboxes_masks_one, pad2factor
 
+
+
+def get_files(path, keys=[], return_fullpath=True, sort=True, sorting_key=None, recursive=True, get_dirs=False, ignore_suffix=False):
+    """Get all the file name under the given path with assigned keys
+    Args:
+        path: (str)
+        keys: (list, str)
+        return_fullpath: (bool)
+        sort: (bool)
+        sorting_key: (func)
+        recursive: The flag for searching path recursively or not(bool)
+    Return:
+        file_list: (list)
+    """
+    file_list = []
+    assert isinstance(keys, (list, str))
+    if isinstance(keys, str): keys = [keys]
+    # Rmove repeated keys
+    keys = list(set(keys))
+
+    def push_back_filelist(root, f, file_list, is_fullpath):
+        f = f[:-4] if ignore_suffix else f
+        if is_fullpath:
+            file_list.append(os.path.join(root, f))
+        else:
+            file_list.append(f)
+
+    for i, (root, dirs, files) in enumerate(os.walk(path)):
+        # print(root, dirs, files)
+        if not recursive:
+            if i > 0: break
+
+        if get_dirs:
+            files = dirs
+            
+        for j, f in enumerate(files):
+            if keys:
+                for key in keys:
+                    if key in f:
+                        push_back_filelist(root, f, file_list, return_fullpath)
+            else:
+                push_back_filelist(root, f, file_list, return_fullpath)
+
+    if file_list:
+        if sort: file_list.sort(key=sorting_key)
+    else:
+        f = 'dir' if get_dirs else 'file'
+        if keys: 
+            print(f'No {f} exist with key {keys}.') 
+        else: 
+            print(f'No {f} exist.') 
+    return file_list
+
 class MaskReader(Dataset):
     def __init__(self, data_dir, set_name, cfg, mode='train', split_combiner=None):
         self.mode = mode
@@ -29,6 +82,12 @@ class MaskReader(Dataset):
             self.filenames = np.genfromtxt(set_name, dtype=str)
         elif set_name.endswith('.npy'):
             self.filenames = np.load(set_name)
+
+        # TODO:
+        # from utils.LIDC.cvrt_annos_to_npy import get_files
+        ff = rf'C:\Users\test\Desktop\Leon\Datasets\TMH_Nodule-preprocess\nodulenet'
+        self.filenames = get_files(ff, 'bboxes.npy', ignore_suffix=True)
+        self.filenames = ['_'.join(f.split('_')[:-1]) for f in self.filenames]
 
         if mode != 'test':
             self.filenames = [f for f in self.filenames if (f not in self.blacklist)]
@@ -122,6 +181,11 @@ class MaskReader(Dataset):
 
             input = (image.astype(np.float32) - 128.) / 128.
 
+            # import matplotlib.pyplot as plt
+            # f = self.filenames[idx]
+            # plt.imshow(image[0, 0])
+            # plt.savefig('test.png')
+            # print('cc', np.sum(input), np.sum(image), np.sum(mask))
             return [torch.from_numpy(input).float(), truth_bboxes, truth_labels, truth_masks, masks, original_image]
 
 

@@ -80,6 +80,7 @@ def xml2mask(xml_file):
 
     ctr_arrs = []
     total_malignancy = []
+    # reader_malignancy = []
     for i, reader in enumerate(annos):
         for j, nodule in enumerate(reader.nodules):
             ctr_arr = []
@@ -88,25 +89,41 @@ def xml2mask(xml_file):
                 for roi_xy in roi.roi_xy:
                     ctr_arr.append([z, roi_xy[1], roi_xy[0]])
             malignancy = nodule.characteristics.malignancy
-            total_malignancy.append(malignancy)
+            # id = nodule.id
+            # if id in total_malignancy:
+            #     total_malignancy[id].append(malignancy)
+            # else:
+            #     total_malignancy[id] = []
             # ctr_arr.insert(0, [malignancy])
-            # total_malignancy.append(malignancy)
+            total_malignancy.append(malignancy)
             ctr_arrs.append(ctr_arr)
-            
+
+    max_m = max(total_malignancy)
+    min_m = min(total_malignancy)
     seriesuid = header.series_instance_uid
+    total_malignancy = np.clip(total_malignancy, 1, 5)
     ctr_arrs = [total_malignancy, ctr_arrs]
-    return seriesuid, ctr_arrs
+    return seriesuid, ctr_arrs, max_m, min_m
 
 
 def annotation2masks(annos_dir, save_dir):
     files = find_all_files(annos_dir, '.xml')
+    max_m = -1
+    min_m = 100
     for f in tqdm(files, total=len(files)):
         try:
-            seriesuid, masks = xml2mask(f)
-            np.save(os.path.join(save_dir, '%s' % (seriesuid)), masks)
+            seriesuid, masks, m, mm = xml2mask(f)
+            if m > max_m:
+                max_m = m
+            if mm < min_m:
+                min_m = mm
+            # np.save(os.path.join(save_dir, '%s' % (seriesuid)), masks)
         except:
             print("Unexpected error:", sys.exc_info()[0])
-    
+    print(max_m, min_m)
+    print(max_m, min_m)
+
+
 def arr2mask(arr, reso):
     mask = np.zeros(reso)
     arr = arr.astype(np.int32)
@@ -218,11 +235,12 @@ def arrs2mask(img_dir, ctr_arr_dir, save_dir):
             
             for i, index in enumerate(np.where(num >= n)[0]):
                 same_nodules = masks[index]
-                nodule_malignancy = np.mean(total_malignancy[index])
-                if nodule_malignancy >= 3:
-                    nodule_malignancy = 2
-                else:
-                    nodule_malignancy = 1
+                nodule_malignancy = np.median(total_malignancy[index])
+                # nodule_malignancy = np.mean(total_malignancy[index])
+                # if nodule_malignancy >= 3:
+                #     nodule_malignancy = 2
+                # else:
+                #     nodule_malignancy = 1
                 m = np.logical_or.reduce(same_nodules)
                 mask[m] = nodule_malignancy
                 # mask[m] = i + 1
@@ -259,5 +277,5 @@ if __name__ == '__main__':
     os.makedirs(ctr_arr_save_dir, exist_ok=True)
     os.makedirs(mask_save_dir, exist_ok=True)
 
-    # annotation2masks(annos_dir, ctr_arr_save_dir)
-    arrs2mask(img_dir, ctr_arr_save_dir, mask_save_dir)
+    annotation2masks(annos_dir, ctr_arr_save_dir)
+    # arrs2mask(img_dir, ctr_arr_save_dir, mask_save_dir)
