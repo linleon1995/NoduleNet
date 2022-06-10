@@ -134,6 +134,7 @@ def arr2mask(arr, reso):
 def arrs2mask(img_dir, ctr_arr_dir, save_dir):
     # pids = [f[:-4] for f in os.listdir(img_dir) if f.endswith('.mhd')]
     data_path_list = get_files(img_dir, 'mhd')
+    # data_path_list = [data_path for data_path in data_path_list if 'mask' in data_path]
 
     cnt = 0
     consensus = {1: 0, 2: 0, 3: 0, 4: 0}
@@ -149,10 +150,10 @@ def arrs2mask(img_dir, ctr_arr_dir, save_dir):
     zero_pid = []
     for idx, data_path in enumerate(data_path_list):
         folder, filename = os.path.split(data_path)
-        _, subset = os.path.split(folder)
+        # _, subset = os.path.split(folder)
         pid = filename[:-4]
         print(f'{idx}/{num_file} {pid}')
-        img, origin, spacing = load_itk_image(os.path.join(img_dir, subset, filename))
+        img, origin, spacing = load_itk_image(data_path)
         ctr_arrs = np.load(os.path.join(ctr_arr_dir, '%s.npy' % (pid)), allow_pickle=True)
 
         nodule_masks = []
@@ -277,5 +278,5 @@ if __name__ == '__main__':
     os.makedirs(ctr_arr_save_dir, exist_ok=True)
     os.makedirs(mask_save_dir, exist_ok=True)
 
-    annotation2masks(annos_dir, ctr_arr_save_dir)
-    # arrs2mask(img_dir, ctr_arr_save_dir, mask_save_dir)
+    # annotation2masks(annos_dir, ctr_arr_save_dir)
+    arrs2mask(img_dir, ctr_arr_save_dir, mask_save_dir)

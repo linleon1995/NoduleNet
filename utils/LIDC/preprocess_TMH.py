@@ -12,6 +12,9 @@ from config import config
 from cvrt_annos_to_npy import get_files
 import cc3d
 import pandas as pd
+import torch
+import matplotlib.pyplot as plt
+
 
 def load_itk_image(filename):
     """Return img array and [z,y,x]-ordered origin and spacing
@@ -521,6 +524,25 @@ def resample(image, spacing, new_spacing=[1.0, 1.0, 1.0], order=1):
     return (image_new, resample_spacing)
 
 
+def resample2(image, spacing, new_spacing=[1.0, 1.0, 1.0], order=1, mode='trilinear'):
+    # TODO: channel problem
+    new_shape = np.round(image.shape * spacing / new_spacing)
+
+    # # the actual spacing to resample.
+    resample_spacing = spacing * image.shape / new_shape
+
+    # resize_factor = new_shape / image.shape
+    new_shape = tuple(np.int32(new_shape).tolist())
+
+    image = image[None, None]
+    image = torch.Tensor(image)
+    zoomed = torch.nn.functional.interpolate(image, size=new_shape, mode=mode)
+    zoomed = zoomed.cpu().detach().numpy()
+    return (zoomed[0, 0], resample_spacing)
+
+
+
+
 def get_lung_box(binary_mask, new_shape, margin=5):
     """
     Get the lung barely surrounding the lung based on the binary_mask and the
@@ -618,6 +640,8 @@ def preprocess(p_list):
         pid, lung_mask_dir, nod_mask_dir, img_dir, save_dir, do_resample = params
         
         print('Preprocessing %s...' % (pid))
+        if '2319683646' not in pid:
+            continue
 
         img, origin, spacing = load_itk_image(img_dir)
         # TODO: Ignore Lung mask temporally
@@ -636,15 +660,30 @@ def preprocess(p_list):
 
         if do_resample:
             print('Resampling...')
-            seg_img, resampled_spacing = resample(seg_img, spacing, order=3)
+            seg_img, resampled_spacing = resample2(seg_img, spacing)
+            # seg_img, resampled_spacing = resample(seg_img, spacing, order=3)
+            resample_img, resampled_spacing = resample2(img, spacing)
+            # resample_img, resampled_spacing = resample(img, spacing, order=3)
             seg_nod_mask = np.zeros(seg_img.shape, dtype=np.uint8)
             nod_mask = cc3d.connected_components(nod_mask, connectivity=26)
             for i in range(int(nod_mask.max())):
                 mask = (nod_mask == (i + 1)).astype(np.uint8)
-                mask, _ = resample(mask, spacing, order=3)
+                mask, _ = resample2(mask, spacing, mode='nearest')
+                # mask1, _ = resample(mask, spacing, order=3)
                 seg_nod_mask[mask > 0.5] = i + 1
 
-        
+
+        # for i in range(mask1.shape[0]):
+        #     m1 = mask1[i]
+        #     m2 = mask2[i]
+        #     if np.sum(m1):
+        #         fig, ax = plt.subplots(1, 2)
+        #         ax[0].imshow(m1)
+        #         ax[1].imshow(m2)
+        #         ax[0].set_title('scipy.ndimage.interpolation.zoom')
+        #         ax[1].set_title('torch.nn.functional.interpolate')
+        #         plt.show()
+
         lung_box = get_lung_box(binary_mask, seg_img.shape)
 
         z_min, z_max = lung_box[0]
@@ -653,6 +692,10 @@ def preprocess(p_list):
 
         seg_img = seg_img[z_min:z_max, y_min:y_max, x_min:x_max]
         seg_nod_mask = seg_nod_mask[z_min:z_max, y_min:y_max, x_min:x_max]
+        # resample_img_lung = resample_img[z_min:z_max, y_min:y_max, x_min:x_max]
+
+        np.save(os.path.join(save_dir, '%s_img.npy' % (pid)), resample_img)
+        np.save(os.path.join(save_dir, '%s_lung_box.npy' % (pid)), lung_box)
         # np.save(os.path.join(save_dir, '%s_origin.npy' % (pid)), origin)
         # np.save(os.path.join(save_dir, '%s_spacing.npy' % (pid)), resampled_spacing)
         # np.save(os.path.join(save_dir, '%s_ebox_origin.npy' % (pid)), np.array((z_min, y_min, x_min)))
@@ -679,6 +722,7 @@ def preprocess(p_list):
     f = rf'C:\Users\test\Desktop\Leon\Weekly\0530\a2.csv'
     total_df.to_csv(f, index=False)
 
+
 def get_nodule_center(nodule_volume):
     zs, ys, xs = np.where(nodule_volume)
     center_irc = np.array([np.mean(zs), np.mean(ys), np.mean(xs)])
@@ -693,8 +737,6 @@ def irc2xyz(coord_irc, origin_xyz, vxSize_xyz, direction_a):
     # coords_xyz = (direction_a @ (idx * vxSize_a)) + origin_a
     return coords_xyz
     
-        
-
 
 def get_nodule_diameter(nodule_vol, origin_zyx, spacing_zyx, direction_zyx):
     # TODO: need to check the result

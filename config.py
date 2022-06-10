@@ -13,12 +13,12 @@ torch.cuda.manual_seed_all(SEED)
 
 # Preprocessing using preserved HU in dilated part of mask
 BASE = rf'C:\Users\test\Desktop\Leon\Datasets' # make sure you have the ending '/'
-data_config_LIDC = {
+data_config = {
     # put combined LUNA16 .mhd files into one folder
     'data_dir': os.path.join(BASE, rf'LUNA16\data'),
 
     # directory for putting all preprocessed results for training to this path
-    'preprocessed_data_dir': os.path.join(BASE, rf'LIDC-preprocess'),
+    'preprocessed_data_dir': os.path.join(BASE, rf'LIDC-preprocess/nodulenet'),
 
     # put annotation downloaded from LIDC to this path
     'annos_dir': os.path.join(BASE, rf'LIDC/tcia-lidc-xml'),
@@ -39,22 +39,22 @@ data_config_LIDC = {
     # 'jitter_range': [0, 0, 0],
 }
 
-data_config= {
+data_config_TMH = {
     # put combined LUNA16 .mhd files into one folder
     'data_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/merge'),
 
     # directory for putting all preprocessed results for training to this path
-    'preprocessed_data_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/result'),
+    'preprocessed_data_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/nodulenet/preprocess'),
 
-    # put annotation downloaded from LIDC to this path
-    'annos_dir': os.path.join(BASE, rf'LIDC/tcia-lidc-xml'),
+    # # put annotation downloaded from LIDC to this path
+    'annos_dir': None,
 
     # put lung mask downloaded from LUNA16 to this path
-    'lung_mask_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/nodulenet_lung_mask'),
+    'lung_mask_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/nodulenet/lung_mask'),
 
     # Directory for saving intermediate results
-    'ctr_arr_save_dir': os.path.join(BASE, rf'annotation/mask_test'),
-    'mask_save_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/merge'),
+    'ctr_arr_save_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/nodulenet/ctr'),
+    'mask_save_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/nodulenet/mask'),
     'mask_exclude_save_dir': os.path.join(BASE, rf'masks_exclude_test'),
 
 
@@ -171,7 +171,8 @@ elif train_config['optimizer'] == 'RMSprop':
 
 train_config['RESULTS_DIR'] = os.path.join(train_config['ROOT_DIR'], 'results')
 train_config['out_dir'] = os.path.join(train_config['RESULTS_DIR'], 'cross_val_test')
-train_config['initial_checkpoint'] = 'results/200.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
+# train_config['initial_checkpoint'] = 'results/200.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
+train_config['initial_checkpoint'] = None #train_config['out_dir'] + '/model/027.ckpt'
 
 
 config = dict(data_config, **net_config)

@@ -83,11 +83,11 @@ class MaskReader(Dataset):
         elif set_name.endswith('.npy'):
             self.filenames = np.load(set_name)
 
-        # TODO:
-        # from utils.LIDC.cvrt_annos_to_npy import get_files
-        ff = rf'C:\Users\test\Desktop\Leon\Datasets\TMH_Nodule-preprocess\nodulenet'
-        self.filenames = get_files(ff, 'bboxes.npy', ignore_suffix=True)
-        self.filenames = ['_'.join(f.split('_')[:-1]) for f in self.filenames]
+        # # TODO:
+        # # from utils.LIDC.cvrt_annos_to_npy import get_files
+        # ff = rf'C:\Users\test\Desktop\Leon\Datasets\TMH_Nodule-preprocess\nodulenet'
+        # self.filenames = get_files(ff, 'bboxes.npy', ignore_suffix=True)
+        # self.filenames = ['_'.join(f.split('_')[:-1]) for f in self.filenames]
 
         if mode != 'test':
             self.filenames = [f for f in self.filenames if (f not in self.blacklist)]
