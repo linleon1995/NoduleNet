@@ -39,6 +39,7 @@ def binary_cross_entropy_with_hard_negative_mining(logits, labels, weights, batc
             pos_prob, pos_labels.float()) + 0.5 * classify_loss(
             neg_prob, neg_labels.float())
         pos_correct = (pos_prob >= 0.5).sum()
+        pos_correct = pos_correct.cpu().data.item()
         pos_total = len(pos_prob)
     else:
         cls_loss = 0.5 * classify_loss(
@@ -46,6 +47,7 @@ def binary_cross_entropy_with_hard_negative_mining(logits, labels, weights, batc
 
 
     neg_correct = (neg_prob < 0.5).sum()
+    neg_correct = neg_correct.cpu().data.item()
     neg_total = len(neg_prob)
     return cls_loss, pos_correct, pos_total, neg_correct, neg_total
 

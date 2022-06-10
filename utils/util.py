@@ -275,9 +275,13 @@ def clip_boxes(boxes, img_size):
     boxes[:, 0] = np.clip(boxes[:, 0], 0, depth)
     boxes[:, 1] = np.clip(boxes[:, 1], 0, height)
     boxes[:, 2] = np.clip(boxes[:, 2], 0, width)
-    boxes[:, 3] = np.clip(boxes[:, 3], 0, depth)
-    boxes[:, 4] = np.clip(boxes[:, 4], 0, height)
-    boxes[:, 5] = np.clip(boxes[:, 5], 0, width)
+    boxes[:, 3] = np.clip(boxes[:, 3], boxes[:, 0]+4, depth)
+    boxes[:, 4] = np.clip(boxes[:, 4], boxes[:, 1]+4, height)
+    boxes[:, 5] = np.clip(boxes[:, 5], boxes[:, 2]+4, width)
+    # TODO: Leon
+    # boxes[:, 3] = np.clip(boxes[:, 3], 0, depth)
+    # boxes[:, 4] = np.clip(boxes[:, 4], 0, height)
+    # boxes[:, 5] = np.clip(boxes[:, 5], 0, width)
 
     return boxes
 
@@ -409,7 +413,7 @@ def masks2bboxes_masks_one(masks, border):
                            xx.max() - xx.min() + 1 + border,
                            1])
             truth_masks.append(mask)
-
+    # print(instance_nums, bboxes)
     return bboxes, truth_masks
 
 

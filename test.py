@@ -25,19 +25,20 @@ from config import config
 from utils.visualize import draw_gt, draw_pred, generate_image_anim
 from utils.util import dice_score_seperate, get_contours_from_masks, merge_contours, hausdorff_distance
 from utils.util import onehot2multi_mask, normalize, pad2factor, load_dicom_image, crop_boxes2mask_single, npy2submission
+from utils.util import average_precision
 import pandas as pd
 from evaluationScript.noduleCADEvaluationLUNA16 import noduleCADEvaluation
 
 plt.rcParams['figure.figsize'] = (24, 16)
 plt.switch_backend('agg')
 this_module = sys.modules[__name__]
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--net', '-m', metavar='NET', default=config['net'],
                     help='neural net')
-parser.add_argument("mode", type=str,
+parser.add_argument("--mode", type=str, default='eval',
                     help="you want to test or val")
 parser.add_argument("--weight", type=str, default=config['initial_checkpoint'],
                     help="path to model weights to be used")
@@ -93,7 +94,8 @@ def main():
 
 def eval(net, dataset, save_dir=None):
     net.set_mode('eval')
-    net.use_mask = False
+    net.use_mask = True
+    # net.use_mask = False
     net.use_rcnn = True
     aps = []
     dices = []
@@ -101,31 +103,44 @@ def eval(net, dataset, save_dir=None):
     preprocessed_dir = config['preprocessed_data_dir']
 
     print('Total # of eval data %d' % (len(dataset)))
+    run_case = 0
+    runtime_error_cases = []
     for i, (input, truth_bboxes, truth_labels, truth_masks, mask, image) in enumerate(dataset):
+        # if i > 5:break
         try:
             D, H, W = image.shape
             pid = dataset.filenames[i]
 
+            print('')
             print('[%d] Predicting %s' % (i, pid), image.shape)
             gt_mask = mask.astype(np.uint8)
 
             with torch.no_grad():
                 input = input.cuda().unsqueeze(0)
-                net.forward(input, truth_bboxes, truth_labels, truth_masks, mask)
-
+                try:
+                    net.forward(input, truth_bboxes, truth_labels, truth_masks, mask)
+                    run_case += 1
+                except RuntimeError:
+                    print(f'[{i}] CUDA out of memory on case {pid}')
+                    runtime_error_cases.append(pid)
+                    continue
+                
             rpns = net.rpn_proposals.cpu().numpy()
             detections = net.detections.cpu().numpy()
             ensembles = net.ensemble_proposals.cpu().numpy()
 
             if len(detections) and net.use_mask:
                 crop_boxes = net.crop_boxes
-                segments = [F.sigmoid(m).cpu().numpy() > 0.5 for m in net.mask_probs]
+                segments = [torch.sigmoid(m).cpu().numpy() > 0.5 for m in net.mask_probs]
 
                 pred_mask = crop_boxes2mask_single(crop_boxes[:, 1:], segments, input.shape[2:])
                 pred_mask = pred_mask.astype(np.uint8)
 
                 # compute average precisions
                 ap, dice = average_precision(gt_mask, pred_mask)
+                # TODO: 
+                true_objects = len(np.unique(gt_mask)) - 1
+                pred_objects = len(np.unique(pred_mask)) - 1
                 aps.append(ap)
                 dices.extend(dice.tolist())
                 print(ap)
@@ -135,7 +150,21 @@ def eval(net, dataset, save_dir=None):
             else:
                 pred_mask = np.zeros((input[0].shape))
             
-            np.save(os.path.join(save_dir, '%s.npy' % (pid)), pred_mask)
+            # np.save(os.path.join(save_dir, '%s.npy' % (pid)), pred_mask)
+            # # TODO: 
+            # b_pred_mask = np.where(pred_mask>0, 1, 0)
+            # b_gt_mask = np.where(gt_mask[0]>0, 1, 0)
+            # fig, ax = plt.subplots(1,1)
+            # for j in range(pred_mask.shape[0]):
+            #     x = b_pred_mask[j]
+            #     if np.sum(x):
+            #         # print(j)
+            #         ax.imshow(image[j], 'gray')
+            #         ax.imshow(x+b_gt_mask[j]*2, alpha=0.2, vmin=0, vmax=3)
+            #         ax.set_title(f'GT {true_objects} Pred {pred_objects} Dice {dice[0]}')
+            #         fig.savefig(f'results/image/{i}-{j}.png')
+            #         ax.cla()
+            # plt.close()
 
             print('rpn', rpns.shape)
             print('detection', detections.shape)
@@ -166,9 +195,13 @@ def eval(net, dataset, save_dir=None):
                         
             print
             return
-
+    
+    print(f'Acutal running cases {run_case}')
+    print(f'Out of memory case {len(runtime_error_cases)}')
+    print(runtime_error_cases)
     aps = np.array(aps)
     dices = np.array(dices)
+    print(60*'-')
     print('mAP: ', np.mean(aps, 0))
     print('mean dice:%.4f(%.4f)' % (np.mean(dices), np.std(dices)))
     print('mean dice (exclude fn):%.4f(%.4f)' % (np.mean(dices[dices != 0]), np.std(dices[dices != 0])))
@@ -223,19 +256,31 @@ def eval(net, dataset, save_dir=None):
     if not os.path.exists(os.path.join(eval_dir, 'ensemble')):
         os.makedirs(os.path.join(eval_dir, 'ensemble'))
 
-    noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
-    'evaluationScript/annotations/LIDC/3_annotation_excluded.csv',
-    dataset.set_name, rpn_submission_path, os.path.join(eval_dir, 'rpn'))
+    # noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
+    # 'evaluationScript/annotations/LIDC/3_annotation_excluded.csv',
+    # dataset.set_name, rpn_submission_path, os.path.join(eval_dir, 'rpn'))
 
-    noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
-    'evaluationScript/annotations/LIDC/3_annotation_excluded.csv',
-    dataset.set_name, rcnn_submission_path, os.path.join(eval_dir, 'rcnn'))
+    # noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
+    # 'evaluationScript/annotations/LIDC/3_annotation_excluded.csv',
+    # dataset.set_name, rcnn_submission_path, os.path.join(eval_dir, 'rcnn'))
 
-    noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
-    'evaluationScript/annotations/LIDC/3_annotation_excluded.csv',
-    dataset.set_name, ensemble_submission_path, os.path.join(eval_dir, 'ensemble'))
+    # noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
+    # 'evaluationScript/annotations/LIDC/3_annotation_excluded.csv',
+    # dataset.set_name, ensemble_submission_path, os.path.join(eval_dir, 'ensemble'))
         
-    print
+
+    # noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
+    # '',
+    # dataset.set_name, rpn_submission_path, os.path.join(eval_dir, 'rpn'))
+
+    # noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
+    # '',
+    # dataset.set_name, rcnn_submission_path, os.path.join(eval_dir, 'rcnn'))
+
+    # noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
+    # '',
+    # dataset.set_name, ensemble_submission_path, os.path.join(eval_dir, 'ensemble'))
+    # print
 
 
 def eval_single(net, input):

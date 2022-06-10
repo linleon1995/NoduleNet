@@ -10,6 +10,7 @@ import time
 from scipy.ndimage.measurements import label
 import nrrd
 from utils.util import masks2bboxes_masks_one, pad2factor
+import matplotlib.pyplot as plt
 
 class MaskReader(Dataset):
     def __init__(self, data_dir, set_name, cfg, mode='train', split_combiner=None):
@@ -32,6 +33,8 @@ class MaskReader(Dataset):
 
         if mode != 'test':
             self.filenames = [f for f in self.filenames if (f not in self.blacklist)]
+        # TODO: Leon
+        # self.filenames = self.filenames[:10]
 
         for fn in self.filenames:
             l = np.load(os.path.join(data_dir, '%s_bboxes.npy' % fn))
@@ -71,11 +74,24 @@ class MaskReader(Dataset):
                 filename = self.filenames[int(bbox[0])]
                 imgs = self.load_img(filename)
                 masks = self.load_mask(filename)
+                # print('x1', idx, filename, np.max(masks))
+                # print(imgs.shape, masks.shape)
+                # if idx == 0:
+                #     for ss in range(masks.shape[0]):
+                #         m = masks[ss]
+                #         if np.sum(m):
+                #             print(f'{ss}/{masks.shape[0]}')
+                #             # print(np.max(imgs))
+                #             print(np.mean(imgs[0,ss]))
+                #             plt.imshow(imgs[0,ss], 'gray')
+                #             plt.imshow(m, alpha=0.2)
+                #             plt.savefig(f'ori_{ss}.png')
                     
                 bboxes = self.sample_bboxes[int(bbox[0])]
 
                 do_sacle = self.augtype['scale'] and (self.mode=='train')
-                sample, target, masks = self.crop(imgs, bbox[1:], masks, do_sacle, is_random_crop)
+                sample, target, masks = self.crop(idx, imgs, bbox[1:], masks, do_sacle, is_random_crop)
+                # print('x2', idx, filename, np.max(masks))
                 if self.mode == 'train' and not is_random_crop:
                      sample, target, masks = augment(sample, target, masks, 
                                                              do_flip=self.augtype['flip'], do_rotate=self.augtype['rotate'],
@@ -86,17 +102,17 @@ class MaskReader(Dataset):
                 imgs = self.load_img(filename)
                 bboxes = self.sample_bboxes[randimid]
                 isScale = self.augtype['scale'] and (self.mode=='train')
-                sample, target, bboxes, coord = self.crop(imgs, [], bboxes,isScale=False,isRand=True)
+                sample, target, bboxes, coord = self.crop(idx, imgs, [], bboxes,isScale=False,isRand=True)
 
             if sample.shape[1] != self.cfg['crop_size'][0] or sample.shape[2] != \
                 self.cfg['crop_size'][1] or sample.shape[3] != self.cfg['crop_size'][2]:
                 print(filename, sample.shape)
 
             input = (sample.astype(np.float32) - 128) / 128
-
             bboxes, truth_masks = masks2bboxes_masks_one(masks, border=self.cfg['bbox_border'])
             truth_masks = np.array(truth_masks).astype(np.uint8)
             bboxes = np.array(bboxes)
+            # print('idx', idx, bbox, np.max(masks), bboxes)
             truth_labels = bboxes[:, -1]
             truth_bboxes = bboxes[:, :-1]
             masks = np.expand_dims(masks, 0).astype(np.float32)
@@ -122,6 +138,18 @@ class MaskReader(Dataset):
 
             input = (image.astype(np.float32) - 128.) / 128.
 
+            # print(input.shape, masks.shape)
+            # if idx == 0:
+            #     for ss in range(masks.shape[1]):
+            #         m = masks[0,ss]
+            #         if np.sum(m):
+            #             print(f'{ss}/{masks.shape[1]}')
+            #             # print(np.max(imgs))
+            #             print(np.mean(input[0,ss]))
+            #             plt.imshow(input[0,ss], 'gray')
+            #             # plt.imshow(m, alpha=0.2)
+            #             plt.savefig(f'test_{ss}.png')
+            
             return [torch.from_numpy(input).float(), truth_bboxes, truth_labels, truth_masks, masks, original_image]
 
 
@@ -221,7 +249,7 @@ class Crop(object):
         self.stride = config['stride']
         self.pad_value = config['pad_value']
 
-    def __call__(self, imgs, target, masks, do_scale=False, isRand=False):
+    def __call__(self, idx, imgs, target, masks, do_scale=False, isRand=False):
         masks = (masks > 0).astype(np.int32)
         if do_scale:
             radiusLim = [8.,120.]
@@ -241,6 +269,7 @@ class Crop(object):
                 r = target[3] / 2
                 s = np.floor(target[i] - r)+ 1 - bound_size
                 e = np.ceil (target[i] + r)+ 1 + bound_size - crop_size[i]
+                # print('res', r, e, s, bound_size, crop_size)
             else:
                 s = np.max([imgs.shape[i+1]-crop_size[i]/2,imgs.shape[i+1]/2+bound_size])
                 e = np.min([crop_size[i]/2,              imgs.shape[i+1]/2-bound_size])
@@ -248,7 +277,9 @@ class Crop(object):
             if s>e:
                 start.append(np.random.randint(e,s))#!
             else:
-                start.append(int(target[i])-crop_size[i]/2+np.random.randint(-bound_size/2,bound_size/2))
+                # print(idx, 's<=e', target, crop_size)
+                # start.append(int(target[i])-crop_size[i]/2+np.random.randint(-bound_size/2,bound_size/2))
+                start.append(int(target[i])-(crop_size[i]//2+1)+np.random.randint(-bound_size/2,bound_size/2))
 
         pad = []
         pad.append([0,0])
@@ -256,15 +287,42 @@ class Crop(object):
             leftpad = max(0,-start[i])
             rightpad = max(0,start[i]+crop_size[i]-imgs.shape[i+1])
             pad.append([leftpad,rightpad])
+        pad = np.array(pad, np.int32)
         crop = imgs[:,
             max(start[0],0):min(start[0] + crop_size[0], imgs.shape[1]),
             max(start[1],0):min(start[1] + crop_size[1], imgs.shape[2]),
             max(start[2],0):min(start[2] + crop_size[2], imgs.shape[3])]
+        # crop = imgs[:,
+        #     np.int32(np.floor(max(start[0],0))):np.int32(np.ceil(min(start[0] + crop_size[0], imgs.shape[1]))),
+        #     np.int32(np.floor(max(start[1],0))):np.int32(np.ceil(min(start[1] + crop_size[1], imgs.shape[2]))),
+        #     np.int32(np.floor(max(start[2],0))):np.int32(np.ceil(min(start[2] + crop_size[2], imgs.shape[3])))]
+        # print(pad)
         crop = np.pad(crop, pad, 'constant', constant_values=self.pad_value)
+        # print(idx, 'y1', np.max(masks), start, crop_size, masks.shape)
+        # if idx == 360:
+        #     for ss in range(masks.shape[0]):
+        #         if np.sum(masks[ss]):
+        #             print(f'{ss}/{masks.shape[0]}')
+        #             print(np.max(imgs))
+        #             plt.imshow(crop[0,ss], 'gray')
+        #             plt.imshow(masks[ss], alpha=0.2)
+        #             plt.savefig(f'{ss}.png')
+        #     for n in range(1, np.max(masks)+1):
+        #         for ii in range(3):
+        #             print(n, np.min(np.where(masks==n)[ii]), np.max(np.where(masks==n)[ii]))
+        #     print(max(start[0],0), min(start[0] + crop_size[0], imgs.shape[1]))
+        #     print(max(start[1],0), min(start[1] + crop_size[1], imgs.shape[2]))
+        #     print(max(start[2],0), min(start[2] + crop_size[2], imgs.shape[3]))
         masks = masks[
             max(start[0],0):min(start[0] + crop_size[0], imgs.shape[1]),
             max(start[1],0):min(start[1] + crop_size[1], imgs.shape[2]),
             max(start[2],0):min(start[2] + crop_size[2], imgs.shape[3])]
+        # masks = masks[
+        #     np.int32(np.floor(max(start[0],0))):np.int32(np.ceil(min(start[0] + crop_size[0], imgs.shape[1]))),
+        #     np.int32(np.floor(max(start[1],0))):np.int32(np.ceil(min(start[1] + crop_size[1], imgs.shape[2]))),
+        #     np.int32(np.floor(max(start[2],0))):np.int32(np.ceil(min(start[2] + crop_size[2], imgs.shape[3])))]
+        # print(idx, 'y2', np.max(masks), start, crop_size, masks.shape)
+        
         masks = np.pad(masks, pad[1:], 'constant', constant_values=0)
 
         for i in range(3):
