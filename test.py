@@ -33,6 +33,7 @@ from post.post_processing import simple_post_processor
 import cc3d
 import cv2
 from utils.vis import save_mask_in_3d, visualize
+from utils.nodule_to_nrrd import save_nodule_in_nrrd
 
 plt.rcParams['figure.figsize'] = (24, 16)
 plt.switch_backend('agg')
@@ -54,7 +55,7 @@ parser.add_argument("--test-set-name", type=str, default=config['test_set_name']
                     help="path to save the results")
 
 
-def main():
+def main(train_set_name):
     logging.basicConfig(format='[%(levelname)s][%(asctime)s] %(message)s', level=logging.INFO)
     args = parser.parse_args()
     # params_eye_L = np.load('weights/params_eye_L.npy').item()
@@ -63,11 +64,15 @@ def main():
 
     if args.mode == 'eval':
         data_dir = config['preprocessed_data_dir']
+        # TODO:
         test_set_name = args.test_set_name
         num_workers = 0
-        initial_checkpoint = args.weight
+        # initial_checkpoint = args.weight
         net = args.net
         out_dir = args.out_dir
+        save_dir = os.path.join(out_dir, train_set_name)
+        initial_checkpoint = os.path.join(
+            save_dir, 'model', '300.ckpt')
 
         net = getattr(this_module, net)(config)
         net = net.cuda()
@@ -84,11 +89,11 @@ def main():
             return
 
         print('out_dir', out_dir)
-        save_dir = os.path.join(out_dir, 'res', str(epoch))
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        if not os.path.exists(os.path.join(save_dir, 'FROC')):
-            os.makedirs(os.path.join(save_dir, 'FROC'))
+        # save_dir = os.path.join(out_dir, 'res', str(epoch))
+        # if not os.path.exists(save_dir):
+        #     os.makedirs(save_dir)
+        # if not os.path.exists(os.path.join(save_dir, 'FROC')):
+        #     os.makedirs(os.path.join(save_dir, 'FROC'))
         
         dataset = MaskReader(data_dir, test_set_name, config, mode='eval')
         eval(net, dataset, save_dir)
@@ -109,6 +114,9 @@ def get_pid_tmh_mapping():
 
 
 def eval(net, dataset, save_dir=None):
+    # TODO:
+    save_dir = os.path.join(save_dir, '4_3')
+    os.makedirs(save_dir, exist_ok=True)
     net.set_mode('eval')
     net.use_mask = True
     # net.use_mask = False
@@ -130,7 +138,7 @@ def eval(net, dataset, save_dir=None):
     pid_to_tmh_name = get_pid_tmh_mapping()
     for i, (input, truth_bboxes, truth_labels, truth_masks, mask, image) in enumerate(dataset):
         if i in [0, 1, 10]: continue
-        if i <4: continue
+        # if i <4: continue
         if i>5: break
         try:
             D, H, W = image.shape
@@ -149,7 +157,8 @@ def eval(net, dataset, save_dir=None):
                     net.forward(input, truth_bboxes, truth_labels, truth_masks, mask)
                     end = time.time()
                     run_case += 1
-                except RuntimeError:
+                except ValueError:
+                # except RuntimeError:
                     print(f'[{i}] CUDA out of memory on case {pid}')
                     runtime_error_cases.append(pid)
                     continue
@@ -168,9 +177,15 @@ def eval(net, dataset, save_dir=None):
                 # But need to be find out why this happen and what caused may be made to FROC.
                 # This is okay that we use cc3d for segmentation evaluation, but this is not a 
                 # robust result as a detection result.
-                # pred_mask = crop_boxes2mask_single(crop_boxes[:, 1:], segments, input.shape[2:])
-                pred_mask = cc3d.connected_components(pred_mask, 26)
+                pred_mask = crop_boxes2mask_single(crop_boxes[:, 1:], segments, input.shape[2:])
+                b_pred_mask = np.where(pred_mask>0, 1, 0)
+                pred_index = cc3d.connected_components(b_pred_mask, connectivity=26)
+                mapping =[0]
+                for p_idx in np.unique(pred_index)[1:]:
+                    mapping.append(pred_mask[pred_index==p_idx][0])
+
                 pred_mask = pred_mask.astype(np.uint8)
+                pred_index = pred_index.astype(np.uint8)
 
                 # print(gt_mask.shape, pred_mask.shape, image.shape)
                 # plt.imsave('test_pred.png', pred_mask[362])
@@ -183,24 +198,31 @@ def eval(net, dataset, save_dir=None):
                 # print(f'Before process: {np.unique(pred_mask*gt_mask[0])[1:]}')
                 
                 # #######
-                lung_mask_vol = np.load(
-                    os.path.join(lung_mask_dir, f'{pid}_lung_mask.npy'))
-                lung_mask_vol = pad2factor(lung_mask_vol)
-                NC_ckpt = rf'ckpt_best.pth'
-                pred_mask, post_time, cls_time = simple_post_processor(
-                          input.cpu().detach().numpy()[0, 0], 
-                          gt_mask[0], 
-                          pred_mask,
-                          lung_mask_vol,
-                          pid,
-                          FP_reducer_checkpoint=NC_ckpt,
-                          RUNLS=False,
-                          nodule_cls=True)
-                post_process_time.append(post_time)
-                classify_time.append(cls_time)
-                ensembles = ensembles[np.unique(pred_mask)[1:]-1]
+                _1SR = False
+                RUNLS = False
+                nodule_cls = True
+                if _1SR or RUNLS or nodule_cls:
+                    lung_mask_vol = np.load(
+                        os.path.join(lung_mask_dir, f'{pid}_lung_mask.npy'))
+                    lung_mask_vol = pad2factor(lung_mask_vol)
+                    NC_ckpt = rf'ckpt_best.pth'
+                    pred_index, post_time, cls_time = simple_post_processor(
+                            input.cpu().detach().numpy()[0, 0], 
+                            gt_mask[0], 
+                            pred_index,
+                            lung_mask_vol,
+                            pid,
+                            FP_reducer_checkpoint=NC_ckpt,
+                            _1SR=_1SR,
+                            RUNLS=RUNLS,
+                            nodule_cls=nodule_cls)
+                    post_process_time.append(post_time)
+                    classify_time.append(cls_time)
+                    keep_indices =  np.unique(pred_index)[1:]
+                    keep_mask_labels = np.unique(np.array(mapping, 'int')[keep_indices])
+                    ensembles = ensembles[keep_mask_labels]
 
-                print(f'After process: {np.unique(pred_mask*gt_mask[0])[1:]}')
+                    print(f'After process: {np.unique(pred_mask*gt_mask[0])[1:]}')
 
                 # compute average precisions
                 ap, dice = average_precision(gt_mask, pred_mask)
@@ -217,30 +239,28 @@ def eval(net, dataset, save_dir=None):
             np.save(os.path.join(save_dir, '%s.npy' % (pid)), pred_mask)
 
             # # TODO: 
-            # print('Saving images and pred mask')
-            # img_dir = os.path.join(img_root, pid)
-            # os.makedirs(img_dir, exist_ok=True)
 
-            # b_pred_mask = np.where(pred_mask>0, 1, 0)
-            # b_gt_mask = np.where(gt_mask[0]>0, 1, 0)
-            # fig, ax = plt.subplots(1,1)
-            # resample_ct = np.load(
-            #     os.path.join(preprocessed_dir, f'{pid}_img.npy'))
-            # lung_box = np.load(
-            #     os.path.join(preprocessed_dir, f'{pid}_lung_box.npy'))
-            # resample_mask = np.zeros(resample_ct.shape)
-            # resample_pred = np.zeros(resample_ct.shape)
-            # zmin, zmax = lung_box[0]
-            # ymin, ymax = lung_box[1]
-            # xmin, xmax = lung_box[2]
-            # print(resample_ct.shape, b_gt_mask.shape, b_pred_mask.shape,
-            # image.shape, zmin, zmax, ymin, ymax, xmin, xmax)
+            b_pred_mask = np.where(pred_index>0, 1, 0)
+            b_gt_mask = np.where(gt_mask[0]>0, 1, 0)
+            fig, ax = plt.subplots(1,1)
+            resample_ct = np.load(
+                os.path.join(preprocessed_dir, f'{pid}_img.npy'))
+            lung_box = np.load(
+                os.path.join(preprocessed_dir, f'{pid}_lung_box.npy'))
+            resample_mask = np.zeros(resample_ct.shape)
+            resample_pred = np.zeros(resample_ct.shape)
+            zmin, zmax = lung_box[0]
+            ymin, ymax = lung_box[1]
+            xmin, xmax = lung_box[2]
+            print(resample_ct.shape, b_gt_mask.shape, b_pred_mask.shape,
+            image.shape, zmin, zmax, ymin, ymax, xmin, xmax)
 
-            # ori_img_shape = image.shape
-            # resample_mask[zmin:zmax, ymin:ymax, xmin:xmax] = \
-            #     b_gt_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
-            # resample_pred[zmin:zmax, ymin:ymax, xmin:xmax] = \
-            #     b_pred_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
+            ori_img_shape = image.shape
+            resample_mask[zmin:zmax, ymin:ymax, xmin:xmax] = \
+                b_gt_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
+            resample_pred[zmin:zmax, ymin:ymax, xmin:xmax] = \
+                b_pred_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
+
             # for j in range(resample_pred.shape[0]):
             #     pred_slice = resample_pred[j]
             #     if np.sum(pred_slice):
@@ -253,6 +273,19 @@ def eval(net, dataset, save_dir=None):
             #         end = time.time()
             #         plot_times.append(end - start)
             # plt.close()
+            ############
+            print('Saving images and pred mask')
+            img_dir = os.path.join(img_root, pid)
+            os.makedirs(img_dir, exist_ok=True)
+            nodule_visualize(img_dir, pid, resample_ct, resample_mask, resample_pred, 
+                             preprocessed_dir, nodule_probs=None, save_all_images=False)
+            ############
+            nrrd_path = os.path.join(save_dir, 'images', pid, 'nrrd')
+            direction = np.eye(3)
+            origin = np.load(os.path.join(preprocessed_dir, f'{pid}_origin.npy'))
+            spacing = np.load(os.path.join(preprocessed_dir, f'{pid}_spacing.npy'))
+            save_nodule_in_nrrd(resample_ct, resample_pred, direction, origin, spacing, nrrd_path, pid)
+            ############
 
             print('rpn', rpns.shape)
             print('detection', detections.shape)
@@ -313,6 +346,7 @@ def eval(net, dataset, save_dir=None):
     ensemble_res = np.concatenate(ensemble_res, axis=0)
     col_names = ['seriesuid','coordX','coordY','coordZ','diameter_mm', 'probability']
     eval_dir = os.path.join(save_dir, 'FROC')
+    os.makedirs(eval_dir, exist_ok=True)
     rpn_submission_path = os.path.join(eval_dir, 'submission_rpn.csv')
     rcnn_submission_path = os.path.join(eval_dir, 'submission_rcnn.csv')
     ensemble_submission_path = os.path.join(eval_dir, 'submission_ensemble.csv')
@@ -369,17 +403,40 @@ def eval(net, dataset, save_dir=None):
     print('mAP: ', np.mean(aps, 0))
     print('mean dice:%.4f(%.4f)' % (np.mean(dices), np.std(dices)))
     print('mean dice (exclude fn):%.4f(%.4f)' % (np.mean(dices[dices != 0]), np.std(dices[dices != 0])))
-    mean_inference_time = sum(inference_time)/len(inference_time)
-    mean_post_time = sum(post_process_time)/len(post_process_time)
-    mean_classify_time = sum(classify_time)/len(classify_time)
-    mean_plot_time = sum(plot_times)/len(plot_times)
-    print(f'Average inference time {mean_inference_time} sec. in {len(inference_time)} times')
-    # print(f'Average post time {mean_post_time} sec. in {len(mean_post_time)} times')
-    print(f'Average classify time {mean_classify_time} sec. in {len(mean_classify_time)} times')
-    print(f'Average plot time {mean_plot_time} sec. in {len(plot_times)} times')
+    # mean_inference_time = sum(inference_time)/len(inference_time)
+    # mean_post_time = sum(post_process_time)/len(post_process_time)
+    # mean_classify_time = sum(classify_time)/len(classify_time)
+    # mean_plot_time = sum(plot_times)/len(plot_times)
+    # print(f'Average inference time {mean_inference_time} sec. in {len(inference_time)} times')
+    # # print(f'Average post time {mean_post_time} sec. in {len(mean_post_time)} times')
+    # print(f'Average classify time {mean_classify_time} sec. in {len(mean_classify_time)} times')
+    # print(f'Average plot time {mean_plot_time} sec. in {len(plot_times)} times')
+
 
 def nodule_visualize(save_path, pid, vol, target_vol_category, pred_vol_category, 
-                     nodule_probs=None, save_all_images=False):
+                     preprocessed_dir, nodule_probs=None, save_all_images=False):
+
+    # b_pred_mask = np.where(pred_vol_category>0, 1, 0)
+    # b_gt_mask = np.where(target_vol_category>0, 1, 0)
+    # fig, ax = plt.subplots(1,1)
+    # resample_ct = np.load(
+    #     os.path.join(preprocessed_dir, f'{pid}_img.npy'))
+    # lung_box = np.load(
+    #     os.path.join(preprocessed_dir, f'{pid}_lung_box.npy'))
+    # resample_mask = np.zeros(resample_ct.shape)
+    # resample_pred = np.zeros(resample_ct.shape)
+    # zmin, zmax = lung_box[0]
+    # ymin, ymax = lung_box[1]
+    # xmin, xmax = lung_box[2]
+    # # print(resample_ct.shape, b_gt_mask.shape, b_pred_mask.shape,
+    # # vol.shape, zmin, zmax, ymin, ymax, xmin, xmax)
+    
+    # ori_img_shape = vol.shape
+    # resample_mask[zmin:zmax, ymin:ymax, xmin:xmax] = \
+    #     b_gt_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
+    # resample_pred[zmin:zmax, ymin:ymax, xmin:xmax] = \
+    #     b_pred_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
+        
     origin_save_path = os.path.join(save_path, 'images', pid, 'origin')
     enlarge_save_path = os.path.join(save_path, 'images', pid, 'enlarge')
     _3d_save_path = os.path.join(save_path, 'images', pid, '3d')
@@ -387,7 +444,8 @@ def nodule_visualize(save_path, pid, vol, target_vol_category, pred_vol_category
         os.makedirs(path, exist_ok=True)
 
     # TODO: only for binary currently, because it directly select the 1st class prob for visualing
-    vis_vol, vis_indices, vis_crops = visualize(vol, pred_vol_category, target_vol_category, nodule_probs)
+    vis_vol, vis_indices, vis_crops = visualize(
+        vol, pred_vol_category, target_vol_category, nodule_probs)
     if save_all_images:
         vis_indices = np.arange(vis_vol.shape[0])
 
@@ -426,5 +484,9 @@ def eval_single(net, input):
  
 
 if __name__ == '__main__':
-    main()
+    # for idx in range(1, 5):
+    #     set_name = f'{idx}_train'
+    #     main(set_name)
+    set_name = f'{4}_train'
+    main(set_name)
 

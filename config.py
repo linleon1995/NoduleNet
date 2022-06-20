@@ -154,9 +154,9 @@ train_config = {
     'epoch_mask': 40,
     'num_workers': 2,
 
-    'train_set_list': ['split/tmh/3_train.csv'],
-    'val_set_list': ['split/tmh/3_val.csv'],
-    'test_set_name': 'split/tmh/3_val.csv',
+    'train_set_list': ['split/tmh/0_train.csv'],
+    'val_set_list': ['split/tmh/0_val.csv'],
+    'test_set_name': 'split/tmh/0_val.csv',
     # 'train_set_list': ['split/3_train.csv'],
     # 'val_set_list': ['split/3_val.csv'],
     # 'test_set_name': 'split/3_val.csv',

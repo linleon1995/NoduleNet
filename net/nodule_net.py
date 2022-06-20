@@ -229,8 +229,10 @@ class MaskHead(nn.Module):
 
         _, _, D, H, W = img.shape
         out = []
+        # N = detections.shape[0]
+        # out = Variable(torch.zeros((N, D, H, W))).cuda()
 
-        for detection in detections:
+        for idx, detection in enumerate(detections):
             b, z_start, y_start, x_start, z_end, y_end, x_end, cat = detection
             # print('dddd', detection)
             # x = z_start//4
@@ -247,10 +249,16 @@ class MaskHead(nn.Module):
             logits = getattr(self, 'logits' + str(int(cat)))(up3)
             logits = logits.squeeze()
  
+            # TODO: cause GPU run out of memory
+            # This is not workable in training -->
+            # RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!
             mask = Variable(torch.zeros((D, H, W))).cuda()
+            # mask = Variable(torch.zeros((D, H, W)))
             mask[z_start:z_end, y_start:y_end, x_start:x_end] = logits
             mask = mask.unsqueeze(0)
             out.append(mask)
+            
+            # out[idx, z_start:z_end, y_start:y_end, x_start:x_end] = logits
 
         out = torch.cat(out, 0)
 
