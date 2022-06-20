@@ -74,6 +74,7 @@ class MaskReader(Dataset):
                 filename = self.filenames[int(bbox[0])]
                 imgs = self.load_img(filename)
                 masks = self.load_mask(filename)
+
                 # print('x1', idx, filename, np.max(masks))
                 # print(imgs.shape, masks.shape)
                 # if idx == 0:
@@ -147,7 +148,7 @@ class MaskReader(Dataset):
             #             # print(np.max(imgs))
             #             print(np.mean(input[0,ss]))
             #             plt.imshow(input[0,ss], 'gray')
-            #             # plt.imshow(m, alpha=0.2)
+            #             plt.imshow(m, alpha=0.2)
             #             plt.savefig(f'test_{ss}.png')
             
             return [torch.from_numpy(input).float(), truth_bboxes, truth_labels, truth_masks, masks, original_image]

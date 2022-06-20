@@ -27,13 +27,17 @@ from utils.util import dice_score_seperate, get_contours_from_masks, merge_conto
 from utils.util import onehot2multi_mask, normalize, pad2factor, load_dicom_image, crop_boxes2mask_single, npy2submission
 from utils.util import average_precision
 import pandas as pd
-from evaluationScript.noduleCADEvaluationLUNA16 import noduleCADEvaluation
+# from evaluationScript.noduleCADEvaluationLUNA16 import noduleCADEvaluation
+from evaluationScript.noduleCADEvaluation_new import noduleCADEvaluation
+from post.post_processing import simple_post_processor
+import cc3d
+import cv2
+from utils.vis import save_mask_in_3d, visualize
 
 plt.rcParams['figure.figsize'] = (24, 16)
 plt.switch_backend('agg')
 this_module = sys.modules[__name__]
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--net', '-m', metavar='NET', default=config['net'],
@@ -85,11 +89,23 @@ def main():
             os.makedirs(save_dir)
         if not os.path.exists(os.path.join(save_dir, 'FROC')):
             os.makedirs(os.path.join(save_dir, 'FROC'))
-
+        
         dataset = MaskReader(data_dir, test_set_name, config, mode='eval')
         eval(net, dataset, save_dir)
     else:
         logging.error('Mode %s is not supported' % (args.mode))
+
+
+def get_pid_tmh_mapping():
+    f = rf'/workspace/Dataset/TMH-Nodule/TMH-preprocess/merge'
+    dir_list = [name for name in os.listdir(f) if os.path.isdir(os.path.join(f, name))]
+    mapping = {}
+    for _dir in dir_list:
+        file_path = os.path.join(f, _dir, 'raw')
+        folder_list = [name for name in os.listdir(file_path) if os.path.isfile(os.path.join(file_path, name))]
+        pid = folder_list[0][:-4]
+        mapping[pid] = _dir
+    return mapping
 
 
 def eval(net, dataset, save_dir=None):
@@ -101,46 +117,94 @@ def eval(net, dataset, save_dir=None):
     dices = []
     raw_dir = config['data_dir']
     preprocessed_dir = config['preprocessed_data_dir']
+    lung_mask_dir = config['lung_mask_dir']
+    img_root = os.path.join(save_dir, 'img')
 
     print('Total # of eval data %d' % (len(dataset)))
     run_case = 0
     runtime_error_cases = []
+    inference_time = []
+    post_process_time = []
+    classify_time = []
+    plot_times = []
+    pid_to_tmh_name = get_pid_tmh_mapping()
     for i, (input, truth_bboxes, truth_labels, truth_masks, mask, image) in enumerate(dataset):
-        # if i > 5:break
+        if i in [0, 1, 10]: continue
+        if i <4: continue
+        if i>5: break
         try:
             D, H, W = image.shape
             pid = dataset.filenames[i]
+            tmh_name = pid_to_tmh_name[pid]
 
             print('')
             print('[%d] Predicting %s' % (i, pid), image.shape)
+
             gt_mask = mask.astype(np.uint8)
 
             with torch.no_grad():
                 input = input.cuda().unsqueeze(0)
                 try:
+                    start = time.time()
                     net.forward(input, truth_bboxes, truth_labels, truth_masks, mask)
+                    end = time.time()
                     run_case += 1
                 except RuntimeError:
                     print(f'[{i}] CUDA out of memory on case {pid}')
                     runtime_error_cases.append(pid)
                     continue
-                
+            
+            inference_time.append(end-start)
             rpns = net.rpn_proposals.cpu().numpy()
             detections = net.detections.cpu().numpy()
             ensembles = net.ensemble_proposals.cpu().numpy()
-
+            # print('ensembles', ensembles)
             if len(detections) and net.use_mask:
                 crop_boxes = net.crop_boxes
                 segments = [torch.sigmoid(m).cpu().numpy() > 0.5 for m in net.mask_probs]
-
-                pred_mask = crop_boxes2mask_single(crop_boxes[:, 1:], segments, input.shape[2:])
+                
+                # TODO: The reason we change to cc3d is because some bbox is too big that
+                # can cover multiple nodules This is not the behavior we expected for evalution.
+                # But need to be find out why this happen and what caused may be made to FROC.
+                # This is okay that we use cc3d for segmentation evaluation, but this is not a 
+                # robust result as a detection result.
+                # pred_mask = crop_boxes2mask_single(crop_boxes[:, 1:], segments, input.shape[2:])
+                pred_mask = cc3d.connected_components(pred_mask, 26)
                 pred_mask = pred_mask.astype(np.uint8)
+
+                # print(gt_mask.shape, pred_mask.shape, image.shape)
+                # plt.imsave('test_pred.png', pred_mask[362])
+                # plt.imsave('test_gt.png', gt_mask[0,362])
+                # a = np.where(gt_mask[0])
+                # gg = cc3d.connected_components(gt_mask[0], 26)
+                # print(np.unique(gg)[1:])
+                # print(np.unique(
+                #     cc3d.connected_components(pred_mask*gt_mask[0], 26))[1:])
+                # print(f'Before process: {np.unique(pred_mask*gt_mask[0])[1:]}')
+                
+                # #######
+                lung_mask_vol = np.load(
+                    os.path.join(lung_mask_dir, f'{pid}_lung_mask.npy'))
+                lung_mask_vol = pad2factor(lung_mask_vol)
+                NC_ckpt = rf'ckpt_best.pth'
+                pred_mask, post_time, cls_time = simple_post_processor(
+                          input.cpu().detach().numpy()[0, 0], 
+                          gt_mask[0], 
+                          pred_mask,
+                          lung_mask_vol,
+                          pid,
+                          FP_reducer_checkpoint=NC_ckpt,
+                          RUNLS=False,
+                          nodule_cls=True)
+                post_process_time.append(post_time)
+                classify_time.append(cls_time)
+                ensembles = ensembles[np.unique(pred_mask)[1:]-1]
+
+                print(f'After process: {np.unique(pred_mask*gt_mask[0])[1:]}')
 
                 # compute average precisions
                 ap, dice = average_precision(gt_mask, pred_mask)
                 # TODO: 
-                true_objects = len(np.unique(gt_mask)) - 1
-                pred_objects = len(np.unique(pred_mask)) - 1
                 aps.append(ap)
                 dices.extend(dice.tolist())
                 print(ap)
@@ -150,20 +214,44 @@ def eval(net, dataset, save_dir=None):
             else:
                 pred_mask = np.zeros((input[0].shape))
             
-            # np.save(os.path.join(save_dir, '%s.npy' % (pid)), pred_mask)
+            np.save(os.path.join(save_dir, '%s.npy' % (pid)), pred_mask)
+
             # # TODO: 
+            # print('Saving images and pred mask')
+            # img_dir = os.path.join(img_root, pid)
+            # os.makedirs(img_dir, exist_ok=True)
+
             # b_pred_mask = np.where(pred_mask>0, 1, 0)
             # b_gt_mask = np.where(gt_mask[0]>0, 1, 0)
             # fig, ax = plt.subplots(1,1)
-            # for j in range(pred_mask.shape[0]):
-            #     x = b_pred_mask[j]
-            #     if np.sum(x):
-            #         # print(j)
-            #         ax.imshow(image[j], 'gray')
-            #         ax.imshow(x+b_gt_mask[j]*2, alpha=0.2, vmin=0, vmax=3)
-            #         ax.set_title(f'GT {true_objects} Pred {pred_objects} Dice {dice[0]}')
-            #         fig.savefig(f'results/image/{i}-{j}.png')
+            # resample_ct = np.load(
+            #     os.path.join(preprocessed_dir, f'{pid}_img.npy'))
+            # lung_box = np.load(
+            #     os.path.join(preprocessed_dir, f'{pid}_lung_box.npy'))
+            # resample_mask = np.zeros(resample_ct.shape)
+            # resample_pred = np.zeros(resample_ct.shape)
+            # zmin, zmax = lung_box[0]
+            # ymin, ymax = lung_box[1]
+            # xmin, xmax = lung_box[2]
+            # print(resample_ct.shape, b_gt_mask.shape, b_pred_mask.shape,
+            # image.shape, zmin, zmax, ymin, ymax, xmin, xmax)
+
+            # ori_img_shape = image.shape
+            # resample_mask[zmin:zmax, ymin:ymax, xmin:xmax] = \
+            #     b_gt_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
+            # resample_pred[zmin:zmax, ymin:ymax, xmin:xmax] = \
+            #     b_pred_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
+            # for j in range(resample_pred.shape[0]):
+            #     pred_slice = resample_pred[j]
+            #     if np.sum(pred_slice):
+            #         start = time.time()
+            #         ax.imshow(resample_ct[j], 'gray')
+            #         ax.imshow(pred_slice+resample_mask[j]*2, alpha=0.2, vmin=0, vmax=3)
+            #         # ax.set_title(f'GT {true_objects} Pred {pred_objects} Dice {dice[0]}')
+            #         fig.savefig(os.path.join(img_dir, f'{pid}-{j:03d}.png'))
             #         ax.cla()
+            #         end = time.time()
+            #         plot_times.append(end - start)
             # plt.close()
 
             print('rpn', rpns.shape)
@@ -195,16 +283,6 @@ def eval(net, dataset, save_dir=None):
                         
             print
             return
-    
-    print(f'Acutal running cases {run_case}')
-    print(f'Out of memory case {len(runtime_error_cases)}')
-    print(runtime_error_cases)
-    aps = np.array(aps)
-    dices = np.array(dices)
-    print(60*'-')
-    print('mAP: ', np.mean(aps, 0))
-    print('mean dice:%.4f(%.4f)' % (np.mean(dices), np.std(dices)))
-    print('mean dice (exclude fn):%.4f(%.4f)' % (np.mean(dices[dices != 0]), np.std(dices[dices != 0])))
     
     # Generate prediction csv for the use of performning FROC analysis
     # Save both rpn and rcnn results
@@ -268,20 +346,73 @@ def eval(net, dataset, save_dir=None):
     # 'evaluationScript/annotations/LIDC/3_annotation_excluded.csv',
     # dataset.set_name, ensemble_submission_path, os.path.join(eval_dir, 'ensemble'))
         
+    noduleCADEvaluation('evaluationScript/annotations/TMH/annotation_TMH.csv',
+    'evaluationScript/annotations/TMH/annotation_excluded.csv',
+    dataset.set_name, rpn_submission_path, os.path.join(eval_dir, 'rpn'))
 
-    # noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
-    # '',
-    # dataset.set_name, rpn_submission_path, os.path.join(eval_dir, 'rpn'))
+    noduleCADEvaluation('evaluationScript/annotations/TMH/annotation_TMH.csv',
+    'evaluationScript/annotations/TMH/annotation_excluded.csv',
+    dataset.set_name, rcnn_submission_path, os.path.join(eval_dir, 'rcnn'))
 
-    # noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
-    # '',
-    # dataset.set_name, rcnn_submission_path, os.path.join(eval_dir, 'rcnn'))
-
-    # noduleCADEvaluation('evaluationScript/annotations/LIDC/3_annotation.csv',
-    # '',
-    # dataset.set_name, ensemble_submission_path, os.path.join(eval_dir, 'ensemble'))
+    noduleCADEvaluation('evaluationScript/annotations/TMH/annotation_TMH.csv',
+    'evaluationScript/annotations/TMH/annotation_excluded.csv',
+    dataset.set_name, ensemble_submission_path, os.path.join(eval_dir, 'ensemble'))
     # print
 
+    # TODO: save in txt
+    print(f'Acutal running cases {run_case}')
+    print(f'Out of memory case {len(runtime_error_cases)}')
+    print(runtime_error_cases)
+    aps = np.array(aps)
+    dices = np.array(dices)
+    print(60*'-')
+    print('mAP: ', np.mean(aps, 0))
+    print('mean dice:%.4f(%.4f)' % (np.mean(dices), np.std(dices)))
+    print('mean dice (exclude fn):%.4f(%.4f)' % (np.mean(dices[dices != 0]), np.std(dices[dices != 0])))
+    mean_inference_time = sum(inference_time)/len(inference_time)
+    mean_post_time = sum(post_process_time)/len(post_process_time)
+    mean_classify_time = sum(classify_time)/len(classify_time)
+    mean_plot_time = sum(plot_times)/len(plot_times)
+    print(f'Average inference time {mean_inference_time} sec. in {len(inference_time)} times')
+    # print(f'Average post time {mean_post_time} sec. in {len(mean_post_time)} times')
+    print(f'Average classify time {mean_classify_time} sec. in {len(mean_classify_time)} times')
+    print(f'Average plot time {mean_plot_time} sec. in {len(plot_times)} times')
+
+def nodule_visualize(save_path, pid, vol, target_vol_category, pred_vol_category, 
+                     nodule_probs=None, save_all_images=False):
+    origin_save_path = os.path.join(save_path, 'images', pid, 'origin')
+    enlarge_save_path = os.path.join(save_path, 'images', pid, 'enlarge')
+    _3d_save_path = os.path.join(save_path, 'images', pid, '3d')
+    for path in [origin_save_path, enlarge_save_path, _3d_save_path]:
+        os.makedirs(path, exist_ok=True)
+
+    # TODO: only for binary currently, because it directly select the 1st class prob for visualing
+    vis_vol, vis_indices, vis_crops = visualize(vol, pred_vol_category, target_vol_category, nodule_probs)
+    if save_all_images:
+        vis_indices = np.arange(vis_vol.shape[0])
+
+    for vis_idx in vis_indices:
+        # plt.savefig(vis_vol[vis_idx])
+        cv2.imwrite(os.path.join(origin_save_path, f'vis-{pid}-{vis_idx}.png'), vis_vol[vis_idx])
+        if vis_idx in vis_crops:
+            for crop_idx, vis_crop in enumerate(vis_crops[vis_idx]):
+                cv2.imwrite(os.path.join(enlarge_save_path, f'vis-{pid}-{vis_idx}-crop{crop_idx:03d}.png'), vis_crop)
+
+    temp = np.where(target_vol_category+pred_vol_category>0, 1, 0)
+    if np.sum(temp) > 0:
+        zs_c, ys_c, xs_c = np.where(temp)
+        crop_range = {'z': (np.min(zs_c), np.max(zs_c)), 'y': (np.min(ys_c), np.max(ys_c)), 'x': (np.min(xs_c), np.max(xs_c))}
+        if crop_range['z'][1]-crop_range['z'][0] > 2 and \
+        crop_range['y'][1]-crop_range['y'][0] > 2 and \
+        crop_range['x'][1]-crop_range['x'][0] > 2:
+            save_mask_in_3d(target_vol_category, 
+                            save_path1=os.path.join(_3d_save_path, f'{pid}-raw-mask.png'),
+                            save_path2=os.path.join(_3d_save_path, f'{pid}-preprocess-mask.png'), 
+                            crop_range=crop_range)
+            save_mask_in_3d(pred_vol_category,
+                            save_path1=os.path.join(_3d_save_path, f'{pid}-raw-pred.png'),
+                            save_path2=os.path.join(_3d_save_path, f'{pid}-preprocess-pred.png'),
+                            crop_range=crop_range)
 
 def eval_single(net, input):
     with torch.no_grad():
@@ -296,3 +427,4 @@ def eval_single(net, input):
 
 if __name__ == '__main__':
     main()
+

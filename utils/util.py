@@ -105,8 +105,8 @@ def average_precision(labels, y_pred):
     # Compute number of objects
     true_objects = len(np.unique(labels))
     pred_objects = len(np.unique(y_pred))
-    print("Number of true objects:", true_objects)
-    print("Number of predicted objects:", pred_objects)
+    print("Number of true objects:", true_objects-1)
+    print("Number of predicted objects:", pred_objects-1)
 
     # Compute intersection between all objects
     intersection = np.histogram2d(labels.flatten(), y_pred.flatten(), bins=(true_objects, pred_objects))[0]
@@ -143,6 +143,7 @@ def average_precision(labels, y_pred):
     # print("Thresh\tTP\tFP\tFN\tPrec.")
     for t in np.arange(0.5, 1.0, 0.05):
         tp, fp, fn = precision_at(t, iou)
+        # print('uuu', dice.shape, union.shape, intersection.shape, tp, fp, fn)
         p = tp / float(tp + fp + fn)
         # print("{:1.3f}\t{}\t{}\t{}\t{:1.3f}".format(t, tp, fp, fn, p))
         prec.append(p)
