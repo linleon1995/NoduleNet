@@ -538,6 +538,7 @@ def resample2(image, spacing, new_spacing=[1.0, 1.0, 1.0], order=1, mode='trilin
     image = torch.Tensor(image)
     zoomed = torch.nn.functional.interpolate(image, size=new_shape, mode=mode)
     zoomed = zoomed.cpu().detach().numpy()
+
     return (zoomed[0, 0], resample_spacing)
 
 
@@ -636,12 +637,14 @@ def preprocess(p_list):
     total_annots = []
     total_df = []
     for idx, params in enumerate(p_list):
-        # if idx > 0: break
-        pid, lung_mask_dir, nod_mask_dir, img_dir, save_dir, do_resample = params
+        if idx > 3: break
+        pid, lung_mask_dir, nod_mask_dir, img_dir, save_dir, do_resample, lung_mask_save_dir = params
         
         print('Preprocessing %s...' % (pid))
-        if '2319683646' not in pid:
-            continue
+        # if idx > 5:
+        #     break
+        # if '2319683646' not in pid:
+        #     continue
 
         img, origin, spacing = load_itk_image(img_dir)
         # TODO: Ignore Lung mask temporally
@@ -660,18 +663,35 @@ def preprocess(p_list):
 
         if do_resample:
             print('Resampling...')
-            seg_img, resampled_spacing = resample2(seg_img, spacing)
-            # seg_img, resampled_spacing = resample(seg_img, spacing, order=3)
-            resample_img, resampled_spacing = resample2(img, spacing)
-            # resample_img, resampled_spacing = resample(img, spacing, order=3)
+            # seg_img, resampled_spacing = resample2(seg_img, spacing)
+            seg_img, resampled_spacing = resample(seg_img, spacing, order=3)
+            # resample_img, resampled_spacing = resample2(img, spacing)
+            resample_img, resampled_spacing = resample(img, spacing, order=3)
             seg_nod_mask = np.zeros(seg_img.shape, dtype=np.uint8)
             nod_mask = cc3d.connected_components(nod_mask, connectivity=26)
             for i in range(int(nod_mask.max())):
                 mask = (nod_mask == (i + 1)).astype(np.uint8)
-                mask, _ = resample2(mask, spacing, mode='nearest')
-                # mask1, _ = resample(mask, spacing, order=3)
+                # mask, _ = resample2(mask, spacing, mode='nearest')
+                mask, _ = resample(mask, spacing, order=3)
                 seg_nod_mask[mask > 0.5] = i + 1
 
+            resample_lung_mask, _ = resample2(binary_mask, spacing, mode='nearest')
+            # resample_lung_mask, _ = resample(binary_mask, spacing, order=3)
+            # print(np.max(resample_lung_mask), np.min(resample_lung_mask))
+            for ii in range(resample_img.shape[0]):
+                if np.sum(mask[ii]):
+                    print(f'{pid}-{ii}')
+                    plt.imsave(f'figures/nearest/{pid}-{ii}.png', resample_img[ii], cmap='gray')
+                    plt.imsave(f'figures/nearest/{pid}-{ii}-mask.png', mask[ii])
+                    plt.imshow(resample_img[ii], 'gray')
+                    plt.imshow(mask[ii], alpha=0.2)
+                    plt.savefig(f'figures/nearest/{pid}-{ii}-c.png')
+
+                    # plt.imsave(f'figures/trilinear/{pid}-{ii}.png', resample_img[ii], cmap='gray')
+                    # plt.imsave(f'figures/trilinear/{pid}-{ii}-mask.png', mask[ii])
+                    # plt.imshow(resample_img[ii], 'gray')
+                    # plt.imshow(mask[ii], alpha=0.2)
+                    # plt.savefig(f'figures/trilinear/{pid}-{ii}-c.png')
 
         # for i in range(mask1.shape[0]):
         #     m1 = mask1[i]
@@ -692,15 +712,15 @@ def preprocess(p_list):
 
         seg_img = seg_img[z_min:z_max, y_min:y_max, x_min:x_max]
         seg_nod_mask = seg_nod_mask[z_min:z_max, y_min:y_max, x_min:x_max]
-        # resample_img_lung = resample_img[z_min:z_max, y_min:y_max, x_min:x_max]
-
-        np.save(os.path.join(save_dir, '%s_img.npy' % (pid)), resample_img)
-        np.save(os.path.join(save_dir, '%s_lung_box.npy' % (pid)), lung_box)
+        resample_lung_mask = resample_lung_mask[z_min:z_max, y_min:y_max, x_min:x_max]
+        # np.save(os.path.join(save_dir, '%s_img.npy' % (pid)), resample_img)
+        # np.save(os.path.join(save_dir, '%s_lung_box.npy' % (pid)), lung_box)
         # np.save(os.path.join(save_dir, '%s_origin.npy' % (pid)), origin)
         # np.save(os.path.join(save_dir, '%s_spacing.npy' % (pid)), resampled_spacing)
         # np.save(os.path.join(save_dir, '%s_ebox_origin.npy' % (pid)), np.array((z_min, y_min, x_min)))
         # nrrd.write(os.path.join(save_dir, '%s_clean.nrrd' % (pid)), seg_img)
         # nrrd.write(os.path.join(save_dir, '%s_mask.nrrd' % (pid)), seg_nod_mask)
+        # np.save(os.path.join(lung_mask_save_dir, '%s_lung_mask.npy' % (pid)), resample_lung_mask)
 
         annots = get_annotations(seg_nod_mask, origin, spacing, spacing)
         # total_annots.extend(annots)
@@ -713,14 +733,14 @@ def preprocess(p_list):
         print('Finished %s' % (pid))
         print()
 
-    total_df = np.stack(total_df, axis=0)
-    total_df = pd.DataFrame(
-        total_df,
-        columns=['seriesuid', 'coordX', 'coordY', 'coordZ', 'diameter_mm']
-    )
+    # total_df = np.stack(total_df, axis=0)
+    # total_df = pd.DataFrame(
+    #     total_df,
+    #     columns=['seriesuid', 'coordX', 'coordY', 'coordZ', 'diameter_mm']
+    # )
     # total_df['seriesuid'] = pd.Series(total_df['seriesuid'], dtype="string")
-    f = rf'C:\Users\test\Desktop\Leon\Weekly\0530\a2.csv'
-    total_df.to_csv(f, index=False)
+    # f = rf'C:\Users\test\Desktop\Leon\Weekly\0530\a2.csv'
+    # total_df.to_csv(f, index=False)
 
 
 def get_nodule_center(nodule_volume):
@@ -778,31 +798,33 @@ def get_annotations(volume, origin_xyz, spacing_xyz, direction=np.eye(3)):
 
 
 
-def generate_label(params):
-    pid, lung_mask_dir, nod_mask_dir, img_dir, save_dir, do_resample = params
-    masks, _ = nrrd.read(os.path.join(save_dir, '%s_mask.nrrd' % (pid)))
+def generate_label(p_list):
+    for params in p_list:
+        pid, lung_mask_dir, nod_mask_dir, img_dir, save_dir, do_resample, lung_mask_save_dir = params
+        masks, _ = nrrd.read(os.path.join(save_dir, '%s_mask.nrrd' % (pid)))
 
-    bboxes = []
-    instance_nums = [num for num in np.unique(masks) if num]
-    for i in instance_nums:
-        mask = (masks == i).astype(np.uint8)
-        zz, yy, xx = np.where(mask)
-        d = max(zz.max() - zz.min() + 1,  yy.max() - yy.min() + 1, xx.max() - xx.min() + 1)
-        bboxes.append(np.array([(zz.max() + zz.min()) / 2., (yy.max() + yy.min()) / 2., (xx.max() + xx.min()) / 2., d]))
-        
-    bboxes = np.array(bboxes)
-    if not len(bboxes):
-        print('%s does not have any nodules!!!' % (pid))
+        bboxes = []
+        instance_nums = [num for num in np.unique(masks) if num]
+        for i in instance_nums:
+            mask = (masks == i).astype(np.uint8)
+            zz, yy, xx = np.where(mask)
+            d = max(zz.max() - zz.min() + 1,  yy.max() - yy.min() + 1, xx.max() - xx.min() + 1)
+            bboxes.append(np.array([(zz.max() + zz.min()) / 2., (yy.max() + yy.min()) / 2., (xx.max() + xx.min()) / 2., d]))
+            
+        bboxes = np.array(bboxes)
+        if not len(bboxes):
+            print('%s does not have any nodules!!!' % (pid))
 
-    print('Finished masks to bboxes %s' % (pid))
+        print('Finished masks to bboxes %s' % (pid))
 
-    np.save(os.path.join(save_dir, '%s_bboxes.npy' % (pid)), bboxes)
+        np.save(os.path.join(save_dir, '%s_bboxes.npy' % (pid)), bboxes)
 
 
 def main():
     n_consensus = 3
     do_resample = True
     lung_mask_dir = config['lung_mask_dir']
+    lung_mask_save_dir = rf'C:\Users\test\Desktop\Leon\Datasets\TMH_Nodule-preprocess\nodulenet\lung_mask_vol'
     nod_mask_dir = os.path.join(config['mask_save_dir'], str(n_consensus))
     img_dir = config['data_dir']
     save_dir = os.path.join(config['preprocessed_data_dir'])
@@ -832,7 +854,8 @@ def main():
     # lung_mask_list = lung_mask_list[num1:num2]
     for img_dir, nod_mask_dir, lung_mask_path in zip(img_list, mask_list, lung_mask_list):
         pid = os.path.split(img_dir)[1][:-4]
-        params_lists.append([pid, lung_mask_path, nod_mask_dir, img_dir, save_dir, do_resample])
+        params_lists.append(
+            [pid, lung_mask_path, nod_mask_dir, img_dir, save_dir, do_resample, lung_mask_save_dir])
     # params_lists = params_lists[19:]
         # if pid == '11029688907433245392075633136616444':
         #     print(3)
@@ -849,6 +872,7 @@ def main():
     #     params_lists.append([pid, lung_mask_dir, nod_mask_dir, img_dir, save_dir, do_resample])
 
     preprocess(params_lists)
+    # generate_label(params_lists)
 
     # pool = Pool(processes=10)
     # pool.map(preprocess, params_lists)

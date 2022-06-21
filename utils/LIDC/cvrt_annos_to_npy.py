@@ -278,5 +278,5 @@ if __name__ == '__main__':
     os.makedirs(ctr_arr_save_dir, exist_ok=True)
     os.makedirs(mask_save_dir, exist_ok=True)
 
-    # annotation2masks(annos_dir, ctr_arr_save_dir)
-    arrs2mask(img_dir, ctr_arr_save_dir, mask_save_dir)
+    annotation2masks(annos_dir, ctr_arr_save_dir)
+    # arrs2mask(img_dir, ctr_arr_save_dir, mask_save_dir)
