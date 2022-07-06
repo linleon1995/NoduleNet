@@ -33,8 +33,6 @@ class MaskReader(Dataset):
 
         if mode != 'test':
             self.filenames = [f for f in self.filenames if (f not in self.blacklist)]
-        # TODO: Leon
-        # self.filenames = self.filenames[:10]
 
         for fn in self.filenames:
             l = np.load(os.path.join(data_dir, '%s_bboxes.npy' % fn))
@@ -137,7 +135,9 @@ class MaskReader(Dataset):
             truth_bboxes = bboxes[:, :-1]
             masks = np.expand_dims(mask, 0).astype(np.float32)
 
+            # print(image.max(), image.min())
             input = (image.astype(np.float32) - 128.) / 128.
+            # print(input.max(), input.min())
 
             # print(input.shape, masks.shape)
             # if idx == 0:

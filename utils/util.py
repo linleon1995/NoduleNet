@@ -340,26 +340,6 @@ def crop_boxes2mask(crop_boxes, masks, img_reso, num_class=28):
     
     return mask
 
-def crop_boxes2mask_single(crop_boxes, masks, img_reso):
-    """
-    Apply results of mask-rcnn (detections and masks) to mask result.
-
-    crop_boxes: detected bounding boxes [z, y, x, d, h, w, category]
-    masks: mask predictions correponding to each one of the detections config['mask_crop_size']
-    img_reso: tuple with 3 elements, shape of the image or target resolution of the mask
-    """
-    D, H, W = img_reso
-    mask = np.zeros((D, H, W))
-    for i in range(len(crop_boxes)):
-        z_start, y_start, x_start, z_end, y_end, x_end, cat = crop_boxes[i]
-
-        cat = int(cat)
-
-        m = masks[i]
-        D_c, H_c, W_c = m.shape
-        mask[z_start:z_end, y_start:y_end, x_start:x_end][m > 0.5] = i + 1
-    
-    return mask
 
 
 def masks2bboxes_masks(masks, border):

@@ -1,3 +1,4 @@
+from hypothesis import target
 import numpy as np
 import torch
 import os
@@ -115,7 +116,9 @@ def get_pid_tmh_mapping():
 
 def eval(net, dataset, save_dir=None):
     # TODO:
-    save_dir = os.path.join(save_dir, '4_3')
+    out_dir = os.path.split(save_dir)[0]
+    fold = os.path.split(dataset.set_name)[1].split('_')[0]
+    save_dir = os.path.join(save_dir, 'new')
     os.makedirs(save_dir, exist_ok=True)
     net.set_mode('eval')
     net.use_mask = True
@@ -134,12 +137,12 @@ def eval(net, dataset, save_dir=None):
     inference_time = []
     post_process_time = []
     classify_time = []
-    plot_times = []
+    plot_time = []
     pid_to_tmh_name = get_pid_tmh_mapping()
     for i, (input, truth_bboxes, truth_labels, truth_masks, mask, image) in enumerate(dataset):
-        if i in [0, 1, 10]: continue
+        # if i in [0, 1, 10]: continue
         # if i <4: continue
-        if i>5: break
+        # if i>2: break
         try:
             D, H, W = image.shape
             pid = dataset.filenames[i]
@@ -205,7 +208,9 @@ def eval(net, dataset, save_dir=None):
                     lung_mask_vol = np.load(
                         os.path.join(lung_mask_dir, f'{pid}_lung_mask.npy'))
                     lung_mask_vol = pad2factor(lung_mask_vol)
-                    NC_ckpt = rf'ckpt_best.pth'
+                    NC_ckpt = os.path.join(
+                        out_dir, 'run_047', fold, 'ckpt_best.pth')
+                    # NC_ckpt = rf'ckpt_best.pth'
                     pred_index, post_time, cls_time = simple_post_processor(
                             input.cpu().detach().numpy()[0, 0], 
                             gt_mask[0], 
@@ -220,7 +225,7 @@ def eval(net, dataset, save_dir=None):
                     classify_time.append(cls_time)
                     keep_indices =  np.unique(pred_index)[1:]
                     keep_mask_labels = np.unique(np.array(mapping, 'int')[keep_indices])
-                    ensembles = ensembles[keep_mask_labels]
+                    ensembles = ensembles[keep_mask_labels-1]
 
                     print(f'After process: {np.unique(pred_mask*gt_mask[0])[1:]}')
 
@@ -240,50 +245,41 @@ def eval(net, dataset, save_dir=None):
 
             # # TODO: 
 
-            b_pred_mask = np.where(pred_index>0, 1, 0)
-            b_gt_mask = np.where(gt_mask[0]>0, 1, 0)
+            b_pred_mask = np.int32(pred_index)
+            b_gt_mask = np.int32(gt_mask[0])
+            # b_pred_mask = np.int32(np.where(pred_index>0, 1, 0))
+            # b_gt_mask = np.int32(np.where(gt_mask[0]>0, 1, 0))
             fig, ax = plt.subplots(1,1)
             resample_ct = np.load(
                 os.path.join(preprocessed_dir, f'{pid}_img.npy'))
             lung_box = np.load(
                 os.path.join(preprocessed_dir, f'{pid}_lung_box.npy'))
-            resample_mask = np.zeros(resample_ct.shape)
-            resample_pred = np.zeros(resample_ct.shape)
+            resample_mask = np.zeros(resample_ct.shape, np.int32)
+            resample_pred = np.zeros(resample_ct.shape, np.int32)
             zmin, zmax = lung_box[0]
             ymin, ymax = lung_box[1]
             xmin, xmax = lung_box[2]
-            print(resample_ct.shape, b_gt_mask.shape, b_pred_mask.shape,
-            image.shape, zmin, zmax, ymin, ymax, xmin, xmax)
+            # print(resample_ct.shape, b_gt_mask.shape, b_pred_mask.shape,
+            # image.shape, zmin, zmax, ymin, ymax, xmin, xmax)
 
             ori_img_shape = image.shape
             resample_mask[zmin:zmax, ymin:ymax, xmin:xmax] = \
                 b_gt_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
             resample_pred[zmin:zmax, ymin:ymax, xmin:xmax] = \
                 b_pred_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
-
-            # for j in range(resample_pred.shape[0]):
-            #     pred_slice = resample_pred[j]
-            #     if np.sum(pred_slice):
-            #         start = time.time()
-            #         ax.imshow(resample_ct[j], 'gray')
-            #         ax.imshow(pred_slice+resample_mask[j]*2, alpha=0.2, vmin=0, vmax=3)
-            #         # ax.set_title(f'GT {true_objects} Pred {pred_objects} Dice {dice[0]}')
-            #         fig.savefig(os.path.join(img_dir, f'{pid}-{j:03d}.png'))
-            #         ax.cla()
-            #         end = time.time()
-            #         plot_times.append(end - start)
-            # plt.close()
             ############
             print('Saving images and pred mask')
-            img_dir = os.path.join(img_root, pid)
-            os.makedirs(img_dir, exist_ok=True)
-            nodule_visualize(img_dir, pid, resample_ct, resample_mask, resample_pred, 
+            nodule_visualize(save_dir, pid, resample_ct, resample_mask, resample_pred, 
                              preprocessed_dir, nodule_probs=None, save_all_images=False)
             ############
             nrrd_path = os.path.join(save_dir, 'images', pid, 'nrrd')
             direction = np.eye(3)
             origin = np.load(os.path.join(preprocessed_dir, f'{pid}_origin.npy'))
             spacing = np.load(os.path.join(preprocessed_dir, f'{pid}_spacing.npy'))
+            # pred_without_target = resample_pred.copy()
+            # target_labels = np.unique(pred_without_target*resample_mask)[1:]
+            # for target_label in target_labels:
+            #     pred_without_target = np.where(pred_without_target==target_label, 0, pred_without_target)
             save_nodule_in_nrrd(resample_ct, resample_pred, direction, origin, spacing, nrrd_path, pid)
             ############
 
@@ -403,14 +399,18 @@ def eval(net, dataset, save_dir=None):
     print('mAP: ', np.mean(aps, 0))
     print('mean dice:%.4f(%.4f)' % (np.mean(dices), np.std(dices)))
     print('mean dice (exclude fn):%.4f(%.4f)' % (np.mean(dices[dices != 0]), np.std(dices[dices != 0])))
-    # mean_inference_time = sum(inference_time)/len(inference_time)
-    # mean_post_time = sum(post_process_time)/len(post_process_time)
-    # mean_classify_time = sum(classify_time)/len(classify_time)
-    # mean_plot_time = sum(plot_times)/len(plot_times)
-    # print(f'Average inference time {mean_inference_time} sec. in {len(inference_time)} times')
-    # # print(f'Average post time {mean_post_time} sec. in {len(mean_post_time)} times')
-    # print(f'Average classify time {mean_classify_time} sec. in {len(mean_classify_time)} times')
-    # print(f'Average plot time {mean_plot_time} sec. in {len(plot_times)} times')
+    if len(inference_time) > 0:
+        mean_inference_time = sum(inference_time)/len(inference_time)
+        print(f'Average inference time {mean_inference_time} sec. in {len(inference_time)} times')
+    if len(post_process_time) > 0:
+        mean_post_time = sum(post_process_time)/len(post_process_time)
+        print(f'Average post time {mean_post_time} sec. in {len(post_process_time)} times')
+    if len(classify_time) > 0:
+        mean_classify_time = sum(classify_time)/len(classify_time)
+        print(f'Average classify time {mean_classify_time} sec. in {len(classify_time)} times')
+    # if len(plot_time) > 0:
+    #     mean_plot_time = sum(plot_time)/len(plot_time)
+    #     print(f'Average plot time {mean_plot_time} sec. in {len(plot_time)} times')
 
 
 def nodule_visualize(save_path, pid, vol, target_vol_category, pred_vol_category, 
@@ -443,7 +443,9 @@ def nodule_visualize(save_path, pid, vol, target_vol_category, pred_vol_category
     for path in [origin_save_path, enlarge_save_path, _3d_save_path]:
         os.makedirs(path, exist_ok=True)
 
-    # TODO: only for binary currently, because it directly select the 1st class prob for visualing
+    # TODO: only for binary currently, because it directly select the 1st class prob for visualize
+    pred_vol_category = np.asarray(pred_vol_category, dtype=np.uint8)
+    target_vol_category = np.asarray(target_vol_category, dtype=np.uint8)
     vis_vol, vis_indices, vis_crops = visualize(
         vol, pred_vol_category, target_vol_category, nodule_probs)
     if save_all_images:
@@ -484,9 +486,9 @@ def eval_single(net, input):
  
 
 if __name__ == '__main__':
-    # for idx in range(1, 5):
-    #     set_name = f'{idx}_train'
-    #     main(set_name)
-    set_name = f'{4}_train'
-    main(set_name)
+    for idx in range(4):
+        set_name = f'{idx}_train'
+        main(set_name)
+    # set_name = f'{4}_train'
+    # main(set_name)
 

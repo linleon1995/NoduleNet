@@ -252,8 +252,10 @@ class MaskHead(nn.Module):
             # TODO: cause GPU run out of memory
             # This is not workable in training -->
             # RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!
-            mask = Variable(torch.zeros((D, H, W))).cuda()
-            # mask = Variable(torch.zeros((D, H, W)))
+
+            # mask = Variable(torch.zeros((D, H, W))).cuda()
+            mask = Variable(torch.zeros((D, H, W)))
+
             mask[z_start:z_end, y_start:y_end, x_start:x_end] = logits
             mask = mask.unsqueeze(0)
             out.append(mask)
