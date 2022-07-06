@@ -1,8 +1,8 @@
 import os
 import cv2
 import numpy as np
-import matplotlib as mpl
-mpl.use('TkAgg')
+# import matplotlib as mpl
+# mpl.use('TkAgg')
 from matplotlib import pyplot as plt
 from matplotlib import cm
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -10,12 +10,12 @@ from skimage import measure
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-from visualization.utils import compare_result, compare_result_enlarge
+from utils.vis_utils import compare_result, compare_result_enlarge
 # from convert_to_coco_structure import lidc_to_datacatlog_valid
 import logging
 import cv2
 import cc3d
-from postprocessing.data_postprocess import VolumePostProcessor
+from post.data_postprocess import VolumePostProcessor
 logging.basicConfig(level=logging.INFO)
 
 
@@ -154,7 +154,7 @@ def visualize(input_vol, pred_vol, target_vol, nodule_probs=None, enlarge_crop_s
     """
     # pred_vol = cc3d.connected_components(pred_vol, connectivity=26)
     # target_vol = cc3d.connected_components(target_vol, connectivity=26)
-
+    input_vol = np.tile(input_vol[...,None], (1, 1, 1, 3))
     pred_category = np.unique(pred_vol)[1:]
     zs, ys, xs = np.where(pred_vol)
     pred_zs = np.unique(zs)
@@ -190,6 +190,8 @@ def visualize(input_vol, pred_vol, target_vol, nodule_probs=None, enlarge_crop_s
         for slice_idx in contour_pair:
             contours = contour_pair[slice_idx]
             draw_img = draw_vol[slice_idx]
+            # TODO: no contour exist condition
+            # print(contours, 'xxx')
             contour_center = np.int32(np.mean(contours[0], axis=0)[0]) + center_shift
             contour_center = np.clip(contour_center, 0, min(height, width))
 
