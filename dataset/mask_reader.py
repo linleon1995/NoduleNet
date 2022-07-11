@@ -88,8 +88,15 @@ class MaskReader(Dataset):
                     
                 bboxes = self.sample_bboxes[int(bbox[0])]
 
+                # do_sacle = self.augtype['scale']
                 do_sacle = self.augtype['scale'] and (self.mode=='train')
-                sample, target, masks = self.crop(idx, imgs, bbox[1:], masks, do_sacle, is_random_crop)
+                zz, yy, xx = np.where(masks)
+                # print(filename, np.max(masks), idx, bboxes, imgs.shape, masks.shape)
+                # print(np.max(zz), np.min(zz), np.max(yy), np.min(yy), np.max(xx), np.min(xx))
+                # print(masks.max())
+                sample, target, masks = self.crop(
+                    idx, imgs, bbox[1:], masks, do_sacle, is_random_crop)
+                # print(filename, np.max(masks), sample.shape, masks.shape)
                 # print('x2', idx, filename, np.max(masks))
                 if self.mode == 'train' and not is_random_crop:
                      sample, target, masks = augment(sample, target, masks, 
@@ -108,10 +115,14 @@ class MaskReader(Dataset):
                 print(filename, sample.shape)
 
             input = (sample.astype(np.float32) - 128) / 128
+            
+            # print(masks.max())
             bboxes, truth_masks = masks2bboxes_masks_one(masks, border=self.cfg['bbox_border'])
+            # print(masks.max())
             truth_masks = np.array(truth_masks).astype(np.uint8)
             bboxes = np.array(bboxes)
-            # print('idx', idx, bbox, np.max(masks), bboxes)
+            # if bboxes.ndim < 2:
+            #     print('idx', idx, bbox, np.max(masks), bboxes.shape, bboxes, filename)
             truth_labels = bboxes[:, -1]
             truth_bboxes = bboxes[:, :-1]
             masks = np.expand_dims(masks, 0).astype(np.float32)
@@ -168,6 +179,7 @@ class MaskReader(Dataset):
             img = np.load(os.path.join(self.data_dir, '%s_clean.npy' % (path_to_img)))
         else:
             img, _ = nrrd.read(os.path.join(self.data_dir, '%s_clean.nrrd' % (path_to_img)))
+                
         img = img[np.newaxis,...]
 
         return img
@@ -244,6 +256,7 @@ def augment(sample, target, masks, do_flip = True, do_rotate=True, do_swap = Tru
     return sample, target, masks
 
 class Crop(object):
+    """Random crop to crop size (default=(128, 128, 128)) for training"""
     def __init__(self, config):
         self.crop_size = config['crop_size']
         self.bound_size = config['bound_size']
@@ -252,7 +265,10 @@ class Crop(object):
 
     def __call__(self, idx, imgs, target, masks, do_scale=False, isRand=False):
         masks = (masks > 0).astype(np.int32)
+        # TODO: need to do_scale in train and valid, because in 66306981338126299547841370658025387
+        # the fartest point is 176 bigger than 128
         if do_scale:
+            # Find scale between 
             radiusLim = [8.,120.]
             scaleLim = [0.75,1.25]
             scaleRange = [np.min([np.max([(radiusLim[0]/target[3]),scaleLim[0]]),1])
@@ -261,6 +277,11 @@ class Crop(object):
             crop_size = (np.array(self.crop_size).astype('float') / scale).astype('int')
         else:
             crop_size=self.crop_size
+
+        # if target[3] > self.crop_size[0]:
+        #     scale = np.max(self.crop_size) / target[3]
+        #     crop_size = (np.array(self.crop_size).astype('float') / scale).astype('int')
+
         bound_size = self.bound_size
         target = np.copy(target)
 
@@ -314,10 +335,20 @@ class Crop(object):
         #     print(max(start[0],0), min(start[0] + crop_size[0], imgs.shape[1]))
         #     print(max(start[1],0), min(start[1] + crop_size[1], imgs.shape[2]))
         #     print(max(start[2],0), min(start[2] + crop_size[2], imgs.shape[3]))
+        # print('crop', masks.max())
+        # mask2 = masks
         masks = masks[
             max(start[0],0):min(start[0] + crop_size[0], imgs.shape[1]),
             max(start[1],0):min(start[1] + crop_size[1], imgs.shape[2]),
             max(start[2],0):min(start[2] + crop_size[2], imgs.shape[3])]
+        # print('crop', masks.max())
+        # if masks.max() == 0:
+        #     # print(masks.max())
+        #     print(max(start[0],0), min(start[0] + crop_size[0], imgs.shape[1]))
+        #     print(max(start[1],0), min(start[1] + crop_size[1], imgs.shape[2]))
+        #     print(max(start[2],0), min(start[2] + crop_size[2], imgs.shape[3]))
+        #     z, y ,x = np.where(mask2)
+        #     print(z.max(), z.min(), y.max(), y.min(), x.max(), x.min())
         # masks = masks[
         #     np.int32(np.floor(max(start[0],0))):np.int32(np.ceil(min(start[0] + crop_size[0], imgs.shape[1]))),
         #     np.int32(np.floor(max(start[1],0))):np.int32(np.ceil(min(start[1] + crop_size[1], imgs.shape[2]))),
@@ -333,7 +364,9 @@ class Crop(object):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 crop = zoom(crop, [1, scale, scale, scale], order=1)
+                # print('crop', masks.max())
                 masks = zoom(masks, [scale, scale, scale], order=1)
+                # print('crop', masks.max())
             newpad = self.crop_size[0] - crop.shape[1:][0]
             if newpad<0:
                 crop = crop[:,:-newpad,:-newpad,:-newpad]
@@ -345,8 +378,11 @@ class Crop(object):
 
             for i in range(4):
                 target[i] = target[i]*scale
+        # if masks.max() == 0:
+            # print(3)
+        # print('crop', masks.max())
         masks, num = label((masks > 0.5).astype(np.int32))
-
+        # print('crop', masks.max())
         return crop, target, masks
 
 

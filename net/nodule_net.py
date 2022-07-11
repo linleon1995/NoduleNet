@@ -184,19 +184,19 @@ class MaskHead(nn.Module):
         self.num_class = cfg['num_class']
 
         self.up1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='trilinear'),
+            nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False),
             nn.Conv3d(in_channels, 64, kernel_size=3, padding=1),
             nn.InstanceNorm3d(64, momentum=bn_momentum, affine=affine),
             nn.ReLU(inplace = True))
         
         self.up2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='trilinear'),
+            nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False),
             nn.Conv3d(in_channels, 64, kernel_size=3, padding=1),
             nn.InstanceNorm3d(64, momentum=bn_momentum, affine=affine),
             nn.ReLU(inplace = True))
 
         self.up3 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='trilinear'),
+            nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False),
             nn.Conv3d(64, 64, kernel_size=3, padding=1),
             nn.InstanceNorm3d(64, momentum=bn_momentum, affine=affine),
             nn.ReLU(inplace = True))
@@ -229,8 +229,6 @@ class MaskHead(nn.Module):
 
         _, _, D, H, W = img.shape
         out = []
-        # N = detections.shape[0]
-        # out = Variable(torch.zeros((N, D, H, W))).cuda()
 
         for idx, detection in enumerate(detections):
             b, z_start, y_start, x_start, z_end, y_end, x_end, cat = detection
@@ -253,8 +251,8 @@ class MaskHead(nn.Module):
             # This is not workable in training -->
             # RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!
 
-            # mask = Variable(torch.zeros((D, H, W))).cuda()
-            mask = Variable(torch.zeros((D, H, W)))
+            mask = Variable(torch.zeros((D, H, W))).cuda()
+            # mask = Variable(torch.zeros((D, H, W)))
 
             mask[z_start:z_end, y_start:y_end, x_start:x_end] = logits
             mask = mask.unsqueeze(0)

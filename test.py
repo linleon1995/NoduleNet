@@ -25,7 +25,7 @@ from dataset.mask_reader import MaskReader
 from config import config
 from utils.visualize import draw_gt, draw_pred, generate_image_anim
 from utils.util import dice_score_seperate, get_contours_from_masks, merge_contours, hausdorff_distance
-from utils.util import onehot2multi_mask, normalize, pad2factor, load_dicom_image, crop_boxes2mask_single, npy2submission
+from utils.util import onehot2multi_mask, normalize, pad2factor, load_dicom_image, npy2submission
 from utils.util import average_precision
 import pandas as pd
 # from evaluationScript.noduleCADEvaluationLUNA16 import noduleCADEvaluation
@@ -35,6 +35,7 @@ import cc3d
 import cv2
 from utils.vis import save_mask_in_3d, visualize
 from utils.nodule_to_nrrd import save_nodule_in_nrrd
+from inference import crop_boxes2mask_single
 
 plt.rcParams['figure.figsize'] = (24, 16)
 plt.switch_backend('agg')
@@ -73,7 +74,7 @@ def main(train_set_name):
         out_dir = args.out_dir
         save_dir = os.path.join(out_dir, train_set_name)
         initial_checkpoint = os.path.join(
-            save_dir, 'model', '300.ckpt')
+            save_dir, 'model', '260.ckpt')
 
         net = getattr(this_module, net)(config)
         net = net.cuda()
@@ -209,7 +210,8 @@ def eval(net, dataset, save_dir=None):
                         os.path.join(lung_mask_dir, f'{pid}_lung_mask.npy'))
                     lung_mask_vol = pad2factor(lung_mask_vol)
                     NC_ckpt = os.path.join(
-                        out_dir, 'run_047', fold, 'ckpt_best.pth')
+                        out_dir.replace('cross_val_test', 'cross_val_test_old'), 
+                        'run_047', fold, 'ckpt_best.pth')
                     # NC_ckpt = rf'ckpt_best.pth'
                     pred_index, post_time, cls_time = simple_post_processor(
                             input.cpu().detach().numpy()[0, 0], 
@@ -486,9 +488,9 @@ def eval_single(net, input):
  
 
 if __name__ == '__main__':
-    for idx in range(4):
-        set_name = f'{idx}_train'
-        main(set_name)
-    # set_name = f'{4}_train'
-    # main(set_name)
+    # for idx in range(4):
+    #     set_name = f'{idx}_train'
+    #     main(set_name)
+    set_name = f'{4}_train'
+    main(set_name)
 
