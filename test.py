@@ -119,7 +119,7 @@ def eval(net, dataset, save_dir=None):
     # TODO:
     out_dir = os.path.split(save_dir)[0]
     fold = os.path.split(dataset.set_name)[1].split('_')[0]
-    save_dir = os.path.join(save_dir, 'new')
+    save_dir = os.path.join(save_dir, 'no_cls3')
     os.makedirs(save_dir, exist_ok=True)
     net.set_mode('eval')
     net.use_mask = True
@@ -143,10 +143,11 @@ def eval(net, dataset, save_dir=None):
     for i, (input, truth_bboxes, truth_labels, truth_masks, mask, image) in enumerate(dataset):
         # if i in [0, 1, 10]: continue
         # if i <4: continue
-        # if i>2: break
+        # if i>3: break
         try:
             D, H, W = image.shape
             pid = dataset.filenames[i]
+            
             tmh_name = pid_to_tmh_name[pid]
 
             print('')
@@ -204,14 +205,17 @@ def eval(net, dataset, save_dir=None):
                 # #######
                 _1SR = False
                 RUNLS = False
-                nodule_cls = True
+                nodule_cls = False
                 if _1SR or RUNLS or nodule_cls:
                     lung_mask_vol = np.load(
                         os.path.join(lung_mask_dir, f'{pid}_lung_mask.npy'))
                     lung_mask_vol = pad2factor(lung_mask_vol)
                     NC_ckpt = os.path.join(
-                        out_dir.replace('cross_val_test', 'cross_val_test_old'), 
-                        'run_047', fold, 'ckpt_best.pth')
+                        out_dir, 
+                        'run_060', fold, 'ckpt_best.pth')
+                    # NC_ckpt = os.path.join(
+                    #     out_dir.replace('cross_val_test', 'cross_val_test_old'), 
+                    #     'run_047', fold, 'ckpt_best.pth')
                     # NC_ckpt = rf'ckpt_best.pth'
                     pred_index, post_time, cls_time = simple_post_processor(
                             input.cpu().detach().numpy()[0, 0], 
@@ -252,8 +256,9 @@ def eval(net, dataset, save_dir=None):
             # b_pred_mask = np.int32(np.where(pred_index>0, 1, 0))
             # b_gt_mask = np.int32(np.where(gt_mask[0]>0, 1, 0))
             fig, ax = plt.subplots(1,1)
+            # TODO: 
             resample_ct = np.load(
-                os.path.join(preprocessed_dir, f'{pid}_img.npy'))
+                os.path.join(config['ori_data_dir'], f'{pid}_img.npy'))
             lung_box = np.load(
                 os.path.join(preprocessed_dir, f'{pid}_lung_box.npy'))
             resample_mask = np.zeros(resample_ct.shape, np.int32)
@@ -277,7 +282,8 @@ def eval(net, dataset, save_dir=None):
             nrrd_path = os.path.join(save_dir, 'images', pid, 'nrrd')
             direction = np.eye(3)
             origin = np.load(os.path.join(preprocessed_dir, f'{pid}_origin.npy'))
-            spacing = np.load(os.path.join(preprocessed_dir, f'{pid}_spacing.npy'))
+            spacing = np.ones(3)
+            # spacing = np.load(os.path.join(preprocessed_dir, f'{pid}_spacing.npy'))
             # pred_without_target = resample_pred.copy()
             # target_labels = np.unique(pred_without_target*resample_mask)[1:]
             # for target_label in target_labels:
@@ -288,6 +294,10 @@ def eval(net, dataset, save_dir=None):
             print('rpn', rpns.shape)
             print('detection', detections.shape)
             print('ensemble', ensembles.shape)
+
+            # print('rpn', rpns.max())
+            # print('detection', detections.max())
+            # print('ensemble', ensembles.max())
 
 
             if len(rpns):

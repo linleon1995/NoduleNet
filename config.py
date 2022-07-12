@@ -43,8 +43,10 @@ data_config = {
     # put combined LUNA16 .mhd files into one folder
     'data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/merge'),
 
+    'ori_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/preprocess_old2'),
+
     # directory for putting all preprocessed results for training to this path
-    'preprocessed_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/torch'),
+    'preprocessed_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet'),
 
     # put annotation downloaded from LIDC to this path
     'annos_dir': None,
@@ -179,6 +181,7 @@ train_config['out_dir'] = os.path.join(train_config['RESULTS_DIR'], 'cross_val_t
 train_config['initial_checkpoint'] = None #train_config['out_dir'] + '/model/027.ckpt'
 train_config['initial_checkpoint'] = '200.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
 train_config['initial_checkpoint'] = 'results/cross_val_test/model/4_train/260.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
+# train_config['initial_checkpoint'] = 'results/cross_val_test_old/model/4_train/300.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
 # train_config['initial_checkpoint'] = 'results/cross_val_test/model/300_old/300.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
 # train_config['initial_checkpoint'] = 'results/cross_val_test/model/040.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
 
