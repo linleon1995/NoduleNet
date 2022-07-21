@@ -32,7 +32,9 @@ def rcnn_loss(logits, deltas, labels, targets, deltas_sigma=1.0):
         select = Variable(torch.zeros((batch_size,num_class))).cuda()
         select.scatter_(1, labels.view(-1,1), 1)
         select[:,0] = 0
-        select = select.view(batch_size,num_class, 1).expand((batch_size, num_class, 6)).contiguous().byte()
+        # TODO:
+        select = select.view(batch_size,num_class, 1).expand((batch_size, num_class, 6)).contiguous().bool()
+        # select = select.view(batch_size,num_class, 1).expand((batch_size, num_class, 6)).contiguous().byte()
 
         deltas = deltas.view(batch_size, num_class, 6)
         deltas = deltas[select].view(-1, 6)

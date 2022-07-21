@@ -40,7 +40,7 @@ def rcnn_nms(cfg, mode, inputs, proposals, logits, deltas):
     num_class = cfg['num_class']
 
     # probs     = np_sigmoid(logits.cpu().data.numpy())
-    probs = F.softmax(logits).cpu().data.numpy()
+    probs = F.softmax(logits, dim=1).cpu().data.numpy()
     deltas = deltas.cpu().data.numpy().reshape(-1, num_class, 6)
     proposals = proposals.cpu().data.numpy()
     # masks = (F.sigmoid(mask_logits).cpu().data.numpy() > 0.5).astype(np.uint8)
@@ -114,7 +114,7 @@ def get_probability(cfg, mode, inputs, proposals, logits, deltas):
         raise ValueError('rcnn_nms(): invalid mode = %s?'%mode)
 
     num_class = cfg['num_class']
-    probs = F.softmax(logits).cpu().data.numpy()
+    probs = F.softmax(logits, dim=1).cpu().data.numpy()
     deltas = deltas.cpu().data.numpy().reshape(-1, num_class, 6)
     proposals = proposals.cpu().data.numpy()
 

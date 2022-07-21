@@ -1,8 +1,8 @@
 import os
 import math
 import sys
+
 import matplotlib.pyplot as plt
-plt.switch_backend('agg')
 from matplotlib.ticker import ScalarFormatter,LogFormatter,StrMethodFormatter,FixedFormatter
 import sklearn.metrics as skl_metrics
 import numpy as np
@@ -10,9 +10,10 @@ import numpy as np
 from evaluationScript.NoduleFinding import NoduleFinding
 
 from evaluationScript.tools import csvTools
+import argparse
 
 # Evaluation settings
-bPerformBootstrapping = False
+bPerformBootstrapping = True
 bNumberOfBootstrapSamples = 1000
 bOtherNodulesAsIrrelevant = True
 bConfidence = 0.95
@@ -28,6 +29,15 @@ CADProbability_label = 'probability'
 FROC_minX = 0.125 # Mininum value of x-axis of FROC curve
 FROC_maxX = 8 # Maximum value of x-axis of FROC curve
 bLogPlot = True
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--annotations_filename', type=str, default=rf'')
+parser.add_argument('--annotations_excluded_filename', type=str, default=rf'')
+parser.add_argument('--seriesuids_filename', type=str, default=rf'')
+parser.add_argument('--results_filename', type=str, default=rf'')
+parser.add_argument('--outputDir', type=str, default=rf'')
+vars = parser.parse_args()
+
 
 def generateBootstrapSet(scanToCandidatesDict, FROCImList):
     '''
@@ -66,8 +76,8 @@ def compute_mean_ci(interp_sens, confidence = 0.95):
         vec.sort()
 
         sens_mean[i] = np.average(vec)
-        sens_lb[i] = vec[int(math.floor(Pz*len(vec)))]
-        sens_up[i] = vec[int(math.floor((1.0-Pz)*len(vec)))]
+        sens_lb[i] = vec[math.floor(Pz*len(vec))]
+        sens_up[i] = vec[math.floor((1.0-Pz)*len(vec))]
 
     return sens_mean,sens_lb,sens_up
 
@@ -168,7 +178,6 @@ def evaluateCAD(seriesUIDs, results_filename, outputDir, allNodules, CADSystemNa
         i = 0
         for result in results[1:]:
             nodule_seriesuid = result[header.index(seriesuid_label)]
-            
             if seriesuid == nodule_seriesuid:
                 nodule = getNodule(result, header)
                 nodule.candidateID = i
@@ -198,7 +207,14 @@ def evaluateCAD(seriesUIDs, results_filename, outputDir, allNodules, CADSystemNa
         
         print('adding candidates: ' + seriesuid)
         allCandsCAD[seriesuid] = nodules
-    
+        
+    sumallNodules = 0
+    for case in allNodules.values():
+        sumallNodules += len(case)
+    sumallCandsCAD = 0
+    for case in allCandsCAD.values():
+        sumallCandsCAD += len(case)
+
     # open output files
     nodNoCandFile = open(os.path.join(outputDir, "nodulesWithoutCandidate_%s.txt" % CADSystemName), 'w')
     
@@ -403,18 +419,20 @@ def evaluateCAD(seriesUIDs, results_filename, outputDir, allNodules, CADSystemNa
         ax.yaxis.set_ticks(np.arange(0, 1.1, 0.1))
         plt.grid(b=True, which='both')
         plt.tight_layout()
-
         plt.savefig(os.path.join(outputDir, "froc_%s.png" % CADSystemName), bbox_inches=0, dpi=300)
-
-    def find_nearest(array,value):
+    
+    # TODO:
+    def find_nearest(array, value):
         idx = np.where((fps - value) == (fps - value)[(fps - value) >= 0].min())[0][-1]
         return idx
-    thres = [0.125,0.25,0.5,1,2,4,8]
+    thres = [0.125,0.25,0.5,1,2,4]
+    # thres = [0.125,0.25,0.5,1,2,4,8]
     sen = []
     print('FROC at points: ', thres)
     for th in thres:
         print('fps: ', th, ', sensitivity: ', sens[find_nearest(fps, th)])
         sen.append(sens[find_nearest(fps, th)])
+    sen.append(sen[-1])
     print('=============================================\naverage FROC: ', np.mean(sen))
     return (fps, sens, thresholds, fps_bs_itp, sens_bs_mean, sens_bs_lb, sens_bs_up)
     
@@ -455,15 +473,16 @@ def collectNoduleAnnotations(annotations, annotations_excluded, seriesUIDs):
                 nodule = getNodule(annotation, header, state = "Included")
                 nodules.append(nodule)
                 numberOfIncludedNodules += 1
-        
-        # add excluded findings
-        header = annotations_excluded[0]
-        for annotation in annotations_excluded[1:]:
-            nodule_seriesuid = annotation[header.index(seriesuid_label)]
+
+        # TODO:
+        # # add excluded findings
+        # header = annotations_excluded[0]
+        # for annotation in annotations_excluded[1:]:
+        #     nodule_seriesuid = annotation[header.index(seriesuid_label)]
             
-            if seriesuid == nodule_seriesuid:
-                nodule = getNodule(annotation, header, state = "Excluded")
-                nodules.append(nodule)
+        #     if seriesuid == nodule_seriesuid:
+        #         nodule = getNodule(annotation, header, state = "Excluded")
+        #         nodules.append(nodule)
             
         allNodules[seriesuid] = nodules
         noduleCount      += numberOfIncludedNodules
@@ -476,13 +495,19 @@ def collectNoduleAnnotations(annotations, annotations_excluded, seriesUIDs):
     
 def collect(annotations_filename,annotations_excluded_filename,seriesuids_filename):
     annotations          = csvTools.readCSV(annotations_filename)
-    annotations_excluded = csvTools.readCSV(annotations_excluded_filename)
+    # annotations_excluded = csvTools.readCSV(annotations_excluded_filename)
+    # TODO:
+    annotations_excluded = []
     seriesUIDs_csv = csvTools.readCSV(seriesuids_filename)
     
     seriesUIDs = []
     for seriesUID in seriesUIDs_csv:
         seriesUIDs.append(seriesUID[0])
 
+    # TODO:
+    seriesUIDs = [s[0] for s in annotations[1:]]
+    seriesUIDs = np.unique(seriesUIDs)
+    
     allNodules = collectNoduleAnnotations(annotations, annotations_excluded, seriesUIDs)
     
     return (allNodules, seriesUIDs)
@@ -509,12 +534,19 @@ def noduleCADEvaluation(annotations_filename,annotations_excluded_filename,serie
 
 
 if __name__ == '__main__':
+    
+    # annotations_filename          = sys.argv[1]
+    # annotations_excluded_filename = sys.argv[2]
+    # seriesuids_filename           = sys.argv[3]
+    # results_filename              = sys.argv[4]
+    # outputDir                     = sys.argv[5]
 
-    annotations_filename          = sys.argv[1]
-    annotations_excluded_filename = sys.argv[2]
-    seriesuids_filename           = sys.argv[3]
-    results_filename              = sys.argv[4]
-    outputDir                     = sys.argv[5]
+    annotations_filename          = 'evaluationScript/annotations/annotations.csv'
+    annotations_excluded_filename = 'evaluationScript/annotations/annotations_excluded.csv'
+    seriesuids_filename           = 'evaluationScript/annotations/seriesuids.csv'
+    results_filename              = 'evaluationScript/exampleFiles/submission/sampleSubmission.csv'
+    outputDir                     = 'evaluationScript/exampleFiles/evaluation_test'
+
     # execute only if run as a script
     noduleCADEvaluation(annotations_filename,annotations_excluded_filename,seriesuids_filename,results_filename,outputDir)
     print("Finished!")

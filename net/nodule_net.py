@@ -184,19 +184,19 @@ class MaskHead(nn.Module):
         self.num_class = cfg['num_class']
 
         self.up1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='trilinear'),
+            nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False),
             nn.Conv3d(in_channels, 64, kernel_size=3, padding=1),
             nn.InstanceNorm3d(64, momentum=bn_momentum, affine=affine),
             nn.ReLU(inplace = True))
         
         self.up2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='trilinear'),
+            nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False),
             nn.Conv3d(in_channels, 64, kernel_size=3, padding=1),
             nn.InstanceNorm3d(64, momentum=bn_momentum, affine=affine),
             nn.ReLU(inplace = True))
 
         self.up3 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='trilinear'),
+            nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False),
             nn.Conv3d(64, 64, kernel_size=3, padding=1),
             nn.InstanceNorm3d(64, momentum=bn_momentum, affine=affine),
             nn.ReLU(inplace = True))
@@ -230,12 +230,12 @@ class MaskHead(nn.Module):
         _, _, D, H, W = img.shape
         out = []
 
-        for detection in detections:
+        for idx, detection in enumerate(detections):
             b, z_start, y_start, x_start, z_end, y_end, x_end, cat = detection
 
-            up1 = f_4[b, :, z_start // 4:z_end // 4, y_start // 4:y_end // 4, x_start // 4:x_end // 4].unsqueeze(0)
+            up1 = f_4[b, :, z_start//4:z_end//4, y_start//4:y_end//4, x_start//4:x_end//4].unsqueeze(0)
             up2 = self.up2(up1)
-            up2 = self.back2(torch.cat((up2, f_2[b, :, z_start // 2:z_end // 2, y_start // 2:y_end // 2, x_start // 2:x_end // 2].unsqueeze(0)), 1))
+            up2 = self.back2(torch.cat((up2, f_2[b, :, z_start//2:z_end//2, y_start//2:y_end//2, x_start//2:x_end//2].unsqueeze(0)), 1))
             up3 = self.up3(up2)
             im = img[b, :, z_start:z_end, y_start:y_end, x_start:x_end].unsqueeze(0)
             up3 = self.back3(torch.cat((up3, im), 1))
@@ -243,11 +243,19 @@ class MaskHead(nn.Module):
             logits = getattr(self, 'logits' + str(int(cat)))(up3)
             logits = logits.squeeze()
  
+            # TODO: cause GPU run out of memory
+            # This is not workable in training -->
+            # RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!
+
             mask = Variable(torch.zeros((D, H, W))).cuda()
+            # mask = Variable(torch.zeros((D, H, W)))
+
             mask[z_start:z_end, y_start:y_end, x_start:x_end] = logits
             mask = mask.unsqueeze(0)
             out.append(mask)
-        
+            
+            # out[idx, z_start:z_end, y_start:y_end, x_start:x_end] = logits
+
         out = torch.cat(out, 0)
 
         return out
@@ -318,6 +326,8 @@ class CropRoi(nn.Module):
             if np.any((c1 - c0).cpu().data.numpy() < 1):
                 print(p)
                 print('c0:', c0, ', c1:', c1)
+                # TODO: Leon
+                continue
             crop = f[b, :, c0[0]:c1[0], c0[1]:c1[1], c0[2]:c1[2]]
             crop = F.adaptive_max_pool3d(crop, self.rcnn_crop_size)
             crops.append(crop)
@@ -371,15 +381,18 @@ class NoduleNet(nn.Module):
 
             if self.use_rcnn:
                 # self.rpn_proposals = torch.zeros((0, 8)).cuda()
+                # print('aaaaaaaa',  self.rpn_proposals)
                 self.rpn_proposals, self.rcnn_labels, self.rcnn_assigns, self.rcnn_targets = \
                     make_rcnn_target(self.cfg, self.mode, inputs, self.rpn_proposals,
                         truth_boxes, truth_labels, truth_masks)
-
+                # print('bbbbbbbb',  self.rpn_proposals)
+        
         #rcnn proposals
         self.detections = copy.deepcopy(self.rpn_proposals)
         self.ensemble_proposals = copy.deepcopy(self.rpn_proposals)
 
-        self.mask_probs = []
+        self.mask_probs, self.mask_targets = [], []
+        self.crop_boxes = []
         if self.use_rcnn:
             if len(self.rpn_proposals) > 0:
                 rcnn_crops = self.rcnn_crop(feat_4, inputs, self.rpn_proposals)
@@ -394,13 +407,20 @@ class NoduleNet(nn.Module):
 
             if self.use_mask and len(self.detections):
                 # keep batch index, z, y, x, d, h, w, class
-                self.crop_boxes = []
                 if len(self.detections):
+                    # print('--a', self.detections)
                     self.crop_boxes = self.detections[:, [0, 2, 3, 4, 5, 6, 7, 8]].cpu().numpy().copy()
+                    # print('--b', self.crop_boxes)
                     self.crop_boxes[:, 1:-1] = center_box_to_coord_box(self.crop_boxes[:, 1:-1])
+                    # print('--c', self.crop_boxes)
                     self.crop_boxes = self.crop_boxes.astype(np.int32)
+                    # self.crop_boxes[:, 4:-1] = self.crop_boxes[:, 4:-1] + np.ones_like(self.crop_boxes[:, 4:-1])
+                    # print('--d', self.crop_boxes)
                     self.crop_boxes[:, 1:-1] = ext2factor(self.crop_boxes[:, 1:-1], 4)
+                    # print('--e', self.crop_boxes)
                     self.crop_boxes[:, 1:-1] = clip_boxes(self.crop_boxes[:, 1:-1], inputs.shape[2:])
+                    # print('--f', self.crop_boxes)
+                    # print(30*'=')
                 
                 # if self.mode in ['eval', 'test']:
                 #     self.crop_boxes = top1pred(self.crop_boxes)
@@ -410,6 +430,7 @@ class NoduleNet(nn.Module):
                 if self.mode in ['train', 'valid']:
                     self.mask_targets = make_mask_target(self.cfg, self.mode, inputs, self.crop_boxes,
                         truth_boxes, truth_labels, masks)
+                    # print('xxx', self.mask_targets)
 
                 # Make sure to keep feature maps not splitted by data parallel
                 features = [t.unsqueeze(0).expand(torch.cuda.device_count(), -1, -1, -1, -1, -1) for t in features]
@@ -583,4 +604,3 @@ if __name__ == '__main__':
 
     input = torch.rand([4,1,128,128,128])
     input = Variable(input)
-

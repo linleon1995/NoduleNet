@@ -24,6 +24,7 @@ from scipy.sparse import csr_matrix
 from scipy.spatial.distance import cdist
 import pandas as pd
 import cv2
+import cc3d
 try:
     # Python2
     from StringIO import StringIO
@@ -105,8 +106,8 @@ def average_precision(labels, y_pred):
     # Compute number of objects
     true_objects = len(np.unique(labels))
     pred_objects = len(np.unique(y_pred))
-    print("Number of true objects:", true_objects)
-    print("Number of predicted objects:", pred_objects)
+    print("Number of true objects:", true_objects-1)
+    print("Number of predicted objects:", pred_objects-1)
 
     # Compute intersection between all objects
     intersection = np.histogram2d(labels.flatten(), y_pred.flatten(), bins=(true_objects, pred_objects))[0]
@@ -143,6 +144,7 @@ def average_precision(labels, y_pred):
     # print("Thresh\tTP\tFP\tFN\tPrec.")
     for t in np.arange(0.5, 1.0, 0.05):
         tp, fp, fn = precision_at(t, iou)
+        # print('uuu', dice.shape, union.shape, intersection.shape, tp, fp, fn)
         p = tp / float(tp + fp + fn)
         # print("{:1.3f}\t{}\t{}\t{}\t{:1.3f}".format(t, tp, fp, fn, p))
         prec.append(p)
@@ -275,9 +277,13 @@ def clip_boxes(boxes, img_size):
     boxes[:, 0] = np.clip(boxes[:, 0], 0, depth)
     boxes[:, 1] = np.clip(boxes[:, 1], 0, height)
     boxes[:, 2] = np.clip(boxes[:, 2], 0, width)
-    boxes[:, 3] = np.clip(boxes[:, 3], 0, depth)
-    boxes[:, 4] = np.clip(boxes[:, 4], 0, height)
-    boxes[:, 5] = np.clip(boxes[:, 5], 0, width)
+    boxes[:, 3] = np.clip(boxes[:, 3], boxes[:, 0]+4, depth)
+    boxes[:, 4] = np.clip(boxes[:, 4], boxes[:, 1]+4, height)
+    boxes[:, 5] = np.clip(boxes[:, 5], boxes[:, 2]+4, width)
+    # TODO: Leon
+    # boxes[:, 3] = np.clip(boxes[:, 3], 0, depth)
+    # boxes[:, 4] = np.clip(boxes[:, 4], 0, height)
+    # boxes[:, 5] = np.clip(boxes[:, 5], 0, width)
 
     return boxes
 
@@ -334,26 +340,6 @@ def crop_boxes2mask(crop_boxes, masks, img_reso, num_class=28):
     
     return mask
 
-def crop_boxes2mask_single(crop_boxes, masks, img_reso):
-    """
-    Apply results of mask-rcnn (detections and masks) to mask result.
-
-    crop_boxes: detected bounding boxes [z, y, x, d, h, w, category]
-    masks: mask predictions correponding to each one of the detections config['mask_crop_size']
-    img_reso: tuple with 3 elements, shape of the image or target resolution of the mask
-    """
-    D, H, W = img_reso
-    mask = np.zeros((D, H, W))
-    for i in range(len(crop_boxes)):
-        z_start, y_start, x_start, z_end, y_end, x_end, cat = crop_boxes[i]
-
-        cat = int(cat)
-
-        m = masks[i]
-        D_c, H_c, W_c = m.shape
-        mask[z_start:z_end, y_start:y_end, x_start:x_end][m > 0.5] = i + 1
-    
-    return mask
 
 
 def masks2bboxes_masks(masks, border):
@@ -409,7 +395,7 @@ def masks2bboxes_masks_one(masks, border):
                            xx.max() - xx.min() + 1 + border,
                            1])
             truth_masks.append(mask)
-
+    # print(instance_nums, bboxes)
     return bboxes, truth_masks
 
 

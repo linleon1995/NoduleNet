@@ -12,24 +12,24 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed_all(SEED)
 
 # Preprocessing using preserved HU in dilated part of mask
-BASE = rf'C:\Users\test\Desktop\Leon\Datasets' # make sure you have the ending '/'
-data_config = {
+BASE = rf'/workspace/Dataset' # make sure you have the ending '/'
+data_config_LIDC = {
     # put combined LUNA16 .mhd files into one folder
-    'data_dir': os.path.join(BASE, rf'LUNA16\data'),
+    'data_dir': os.path.join(BASE, rf'LIDC-IDRI/LUNA16'),
 
     # directory for putting all preprocessed results for training to this path
-    'preprocessed_data_dir': os.path.join(BASE, rf'LIDC-preprocess/nodulenet'),
+    'preprocessed_data_dir': os.path.join(BASE, rf'LIDC-IDRI/LIDC-preprocess'),
 
     # put annotation downloaded from LIDC to this path
-    'annos_dir': os.path.join(BASE, rf'LIDC/tcia-lidc-xml'),
+    'annos_dir': os.path.join(BASE, rf'LIDC-IDRI/LIDC/tcia-lidc-xml'),
 
     # put lung mask downloaded from LUNA16 to this path
-    'lung_mask_dir': os.path.join(BASE, rf'LUNA16/seg-lungs-LUNA16'),
+    'lung_mask_dir': os.path.join(BASE, rf'LIDC-IDRI/LUNA16/seg-lungs-LUNA16'),
 
     # Directory for saving intermediate results
-    'ctr_arr_save_dir': os.path.join(BASE, rf'annotation/mask_test'),
-    'mask_save_dir': os.path.join(BASE, rf'LIDC-preprocess\masks_test'),
-    'mask_exclude_save_dir': os.path.join(BASE, rf'masks_exclude_test'),
+    'ctr_arr_save_dir': os.path.join(BASE, rf'LIDC-IDRI/LIDC-preprocess/annotations'),
+    'mask_save_dir': os.path.join(BASE, rf'LIDC-IDRI/LIDC-preprocess/masks_test'),
+    'mask_exclude_save_dir': os.path.join(BASE, rf'LIDC-IDRI/LIDC-preprocess/masks_exclude_test'),
 
 
     'roi_names': ['nodule'],
@@ -39,29 +39,32 @@ data_config = {
     # 'jitter_range': [0, 0, 0],
 }
 
-data_config_TMH = {
+data_config = {
     # put combined LUNA16 .mhd files into one folder
-    'data_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/merge'),
+    'data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/merge'),
+
+    'ori_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/preprocess_old2'),
 
     # directory for putting all preprocessed results for training to this path
-    'preprocessed_data_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/nodulenet/preprocess_old'),
+    'preprocessed_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet'),
 
-    # # put annotation downloaded from LIDC to this path
+    # put annotation downloaded from LIDC to this path
     'annos_dir': None,
 
     # put lung mask downloaded from LUNA16 to this path
-    'lung_mask_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/nodulenet/lung_mask'),
+    'lung_mask_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/torch'),
 
     # Directory for saving intermediate results
-    'ctr_arr_save_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/nodulenet/ctr'),
-    'mask_save_dir': os.path.join(BASE, rf'TMH_Nodule-preprocess/nodulenet/mask'),
-    'mask_exclude_save_dir': os.path.join(BASE, rf'masks_exclude_test'),
+    'ctr_arr_save_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/ctr'),
+    'mask_save_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/mask'),
+    'mask_exclude_save_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/masks_exclude_test'),
 
 
     'roi_names': ['nodule'],
     'crop_size': [128, 128, 128],
+    # 'crop_size': [180, 180, 180],
     'bbox_border': 8,
-    'pad_value': 170,
+    # 'pad_value': 170,
     # 'jitter_range': [0, 0, 0],
 }
 
@@ -139,23 +142,27 @@ def lr_shedule(epoch, init_lr=0.01, total=200):
 
 train_config = {
     'net': 'NoduleNet',
-    'batch_size': 6,
+    'batch_size': 2,
 
     'lr_schedule': lr_shedule,
     'optimizer': 'SGD',
     'momentum': 0.9,
     'weight_decay': 1e-4,
 
-    'epochs': 200,
-    'epoch_save': 2,
-    'epoch_rcnn': 5,
-    'epoch_mask': 8,
-    'num_workers': 8,
+    'epochs': 300,
+    'epoch_save': 20,
+    # 'epoch_rcnn': 65,
+    # 'epoch_mask': 80,
+    'epoch_rcnn': 25,
+    'epoch_mask': 40,
+    'num_workers': 2,
 
-    'train_set_list': ['split/3_train.csv'],
-    'val_set_list': ['split/3_val.csv'],
-    'test_set_name': 'split/3_val.csv',
-    # 'test_set_name': 'split/cross_val/0_val.csv',
+    'train_set_list': ['split/tmh/3_train.csv'],
+    'val_set_list': ['split/tmh/3_val.csv'],
+    'test_set_name': 'split/tmh/4_val.csv',
+    # 'train_set_list': ['split/3_train.csv'],
+    # 'val_set_list': ['split/3_val.csv'],
+    # 'test_set_name': 'split/3_val.csv',
     'label_types': ['mask'],
     'DATA_DIR': data_config['preprocessed_data_dir'],
     'ROOT_DIR': os.getcwd()
@@ -173,6 +180,11 @@ train_config['RESULTS_DIR'] = os.path.join(train_config['ROOT_DIR'], 'results')
 train_config['out_dir'] = os.path.join(train_config['RESULTS_DIR'], 'cross_val_test')
 # train_config['initial_checkpoint'] = 'results/200.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
 train_config['initial_checkpoint'] = None #train_config['out_dir'] + '/model/027.ckpt'
+train_config['initial_checkpoint'] = '200.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
+train_config['initial_checkpoint'] = 'results/cross_val_test/model/4_train/260.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
+# train_config['initial_checkpoint'] = 'results/cross_val_test_old/model/4_train/300.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
+# train_config['initial_checkpoint'] = 'results/cross_val_test/model/300_old/300.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
+# train_config['initial_checkpoint'] = 'results/cross_val_test/model/040.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
 
 
 config = dict(data_config, **net_config)

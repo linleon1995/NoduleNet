@@ -17,6 +17,11 @@ from tqdm import tqdm
 import random
 import traceback
 from torch.utils.tensorboard import SummaryWriter
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+# TODO:
+import warnings
+warnings.filterwarnings('ignore')
+
 
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
@@ -137,6 +142,9 @@ def main():
 
     start_epoch = start_epoch + 1
 
+    _dir = os.path.split(train_set_list[0])[1][:-4]
+    out_dir = os.path.join(out_dir, _dir)
+    
     model_out_dir = os.path.join(out_dir, 'model')
     tb_out_dir = os.path.join(out_dir, 'runs')
     if not os.path.exists(model_out_dir):

@@ -406,16 +406,24 @@ def evaluateCAD(seriesUIDs, results_filename, outputDir, allNodules, CADSystemNa
 
         plt.savefig(os.path.join(outputDir, "froc_%s.png" % CADSystemName), bbox_inches=0, dpi=300)
 
-    def find_nearest(array,value):
-        idx = np.where((fps - value) == (fps - value)[(fps - value) >= 0].min())[0][-1]
+    def find_nearest(fps, value):
+        if fps.max() > value:
+            idx = np.where((fps - value) == (fps - value)[(fps - value) >= 0].min())[0][-1]
+        else:
+            idx = fps.size - 1
         return idx
     thres = [0.125,0.25,0.5,1,2,4,8]
     sen = []
-    print('FROC at points: ', thres)
+    nodOutputfile.write('\n')
+    nodOutputfile.write(f'FROC at points: {thres}\n')
     for th in thres:
-        print('fps: ', th, ', sensitivity: ', sens[find_nearest(fps, th)])
+        nodOutputfile.write(f'    fps: {th} sensitivity {sens[find_nearest(fps, th)]}\n')
         sen.append(sens[find_nearest(fps, th)])
-    print('=============================================\naverage FROC: ', np.mean(sen))
+    sen.append(sen[-1])
+    cpm = np.mean(sen)
+
+    nodOutputfile.write('    =============================================\n')
+    nodOutputfile.write(f'    average FROC: {cpm}\n')
     return (fps, sens, thresholds, fps_bs_itp, sens_bs_mean, sens_bs_lb, sens_bs_up)
     
 def getNodule(annotation, header, state = ""):
@@ -457,13 +465,14 @@ def collectNoduleAnnotations(annotations, annotations_excluded, seriesUIDs):
                 numberOfIncludedNodules += 1
         
         # add excluded findings
-        header = annotations_excluded[0]
-        for annotation in annotations_excluded[1:]:
-            nodule_seriesuid = annotation[header.index(seriesuid_label)]
-            
-            if seriesuid == nodule_seriesuid:
-                nodule = getNodule(annotation, header, state = "Excluded")
-                nodules.append(nodule)
+        if annotations_excluded:
+            header = annotations_excluded[0]
+            for annotation in annotations_excluded[1:]:
+                nodule_seriesuid = annotation[header.index(seriesuid_label)]
+                
+                if seriesuid == nodule_seriesuid:
+                    nodule = getNodule(annotation, header, state = "Excluded")
+                    nodules.append(nodule)
             
         allNodules[seriesuid] = nodules
         noduleCount      += numberOfIncludedNodules
