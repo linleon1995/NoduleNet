@@ -376,7 +376,7 @@ def seperate_two_lung(binary_mask, spacing, max_iter=22, max_ratio=4.8):
     return binary_mask1, binary_mask2
 
 
-def extract_lung(image, spacing):
+def extract_lung(image, spacing, save_path):
     """
     Preprocess pipeline for extracting the lung from the raw 3D CT image.
     image: 3D numpy array of raw HU values from CT series in [z, y, x] order.
@@ -780,14 +780,14 @@ def preprocess(p_list):
         print('Finished %s' % (pid))
         print()
 
-    # total_df = np.stack(total_df, axis=0)
-    # total_df = pd.DataFrame(
-    #     total_df,
-    #     columns=['seriesuid', 'coordX', 'coordY', 'coordZ', 'diameter_mm']
-    # )
-    # total_df['seriesuid'] = pd.Series(total_df['seriesuid'], dtype="string")
-    # f = rf'C:\Users\test\Desktop\Leon\Weekly\0530\a2.csv'
-    # total_df.to_csv(f, index=False)
+    total_df = np.stack(total_df, axis=0)
+    total_df = pd.DataFrame(
+        total_df,
+        columns=['seriesuid', 'coordX', 'coordY', 'coordZ', 'diameter_mm']
+    )
+    total_df['seriesuid'] = pd.Series(total_df['seriesuid'], dtype="string")
+    f = rf'C:\Users\test\Desktop\Leon\Weekly\0530\a2.csv'
+    total_df.to_csv(f, index=False)
 
 
 def get_nodule_center(nodule_volume):
@@ -867,6 +867,8 @@ def generate_label(p_list):
         np.save(os.path.join(save_dir, '%s_bboxes.npy' % (pid)), bboxes)
 
 
+
+
 def main():
     n_consensus = 3
     do_resample = True
@@ -903,20 +905,7 @@ def main():
         pid = os.path.split(img_dir)[1][:-4]
         params_lists.append(
             [pid, lung_mask_path, nod_mask_dir, img_dir, save_dir, do_resample, lung_mask_save_dir])
-    # params_lists = params_lists[19:]
-        # if pid == '11029688907433245392075633136616444':
-        #     print(3)
-        # else:
-        #     print(pid)
-        #     continue
-
-    # for pid in os.listdir(nod_mask_dir):
-    #     pid = pid[:-4]
-    #     for temp_path in img_list:
-    #         if pid in temp_path:
-    #             img_dir = os.path.split(temp_path)[0]
-    #             break
-    #     params_lists.append([pid, lung_mask_dir, nod_mask_dir, img_dir, save_dir, do_resample])
+   
 
     preprocess(params_lists)
     # generate_label(params_lists)
@@ -935,50 +924,51 @@ def main():
 
 
 if __name__=='__main__':
-    # main()
+    main()
     
-    f = rf'C:\Users\test\Desktop\Leon\Datasets\TMH_Nodule-preprocess\merge\TMH0003\raw\38467158349469692405660363178115017.mhd'
-    img, origin, spacing = load_itk_image(f)
-    print(spacing)
-    pre_img, lung_mask, pre_img2, lung_mask2 = preprocess_op(img, spacing)
 
-    print(pre_img.shape, img.shape, lung_mask.shape, lung_mask2.shape, pre_img2.shape, spacing)
-    print(np.max(pre_img), np.max(img), np.max(lung_mask), np.max(lung_mask2), np.max(pre_img2))
-    for i in range(pre_img.shape[0]):
-        print(i)
-        plt.imshow(pre_img[i], 'gray')
-        # plt.imshow(lung_mask[i], alpha=0.1)
-        plt.savefig(f'figures/test_resample2/img_{i}.png', dpi=300)
-        plt.close()
+    # f = rf'C:\Users\test\Desktop\Leon\Datasets\TMH_Nodule-preprocess\merge\TMH0003\raw\38467158349469692405660363178115017.mhd'
+    # img, origin, spacing = load_itk_image(f)
+    # print(spacing)
+    # pre_img, lung_mask, pre_img2, lung_mask2 = preprocess_op(img, spacing)
 
-        plt.imshow(pre_img2[i], 'gray')
-        plt.savefig(f'figures/test_resample2/img2_{i}.png', dpi=300)
-        plt.close()
+    # print(pre_img.shape, img.shape, lung_mask.shape, lung_mask2.shape, pre_img2.shape, spacing)
+    # print(np.max(pre_img), np.max(img), np.max(lung_mask), np.max(lung_mask2), np.max(pre_img2))
+    # for i in range(pre_img.shape[0]):
+    #     print(i)
+    #     plt.imshow(pre_img[i], 'gray')
+    #     # plt.imshow(lung_mask[i], alpha=0.1)
+    #     plt.savefig(f'figures/test_resample2/img_{i}.png', dpi=300)
+    #     plt.close()
+
+    #     plt.imshow(pre_img2[i], 'gray')
+    #     plt.savefig(f'figures/test_resample2/img2_{i}.png', dpi=300)
+    #     plt.close()
         
-        xmin, xmax = int(pre_img.shape[1]*0.25), int(pre_img.shape[1]*0.75)
-        ymin, ymax = int(pre_img.shape[2]*0.25), int(pre_img.shape[2]*0.75)
-        crop1 = pre_img[i, xmin:xmax, ymin:ymax]
-        crop1, _ = resample2(crop1[np.newaxis], spacing=np.array((1.0, 2.0, 2.0)))
-        plt.imshow(crop1[0], 'gray')
-        plt.savefig(f'figures/test_resample2/crop_{i}.png', dpi=300)
-        plt.close()
+    #     xmin, xmax = int(pre_img.shape[1]*0.25), int(pre_img.shape[1]*0.75)
+    #     ymin, ymax = int(pre_img.shape[2]*0.25), int(pre_img.shape[2]*0.75)
+    #     crop1 = pre_img[i, xmin:xmax, ymin:ymax]
+    #     crop1, _ = resample2(crop1[np.newaxis], spacing=np.array((1.0, 2.0, 2.0)))
+    #     plt.imshow(crop1[0], 'gray')
+    #     plt.savefig(f'figures/test_resample2/crop_{i}.png', dpi=300)
+    #     plt.close()
         
-        xmin, xmax = int(pre_img2.shape[1]*0.25), int(pre_img2.shape[1]*0.75)
-        ymin, ymax = int(pre_img2.shape[2]*0.25), int(pre_img2.shape[2]*0.75)
-        crop2 = pre_img2[i, xmin:xmax, ymin:ymax]
-        crop2, _ = resample2(crop2[np.newaxis], spacing=np.array((1.0, 2.0, 2.0)))
-        plt.imshow(crop2[0], 'gray')
-        plt.savefig(f'figures/test_resample2/crop2_{i}.png', dpi=300)
-        plt.close()
+    #     xmin, xmax = int(pre_img2.shape[1]*0.25), int(pre_img2.shape[1]*0.75)
+    #     ymin, ymax = int(pre_img2.shape[2]*0.25), int(pre_img2.shape[2]*0.75)
+    #     crop2 = pre_img2[i, xmin:xmax, ymin:ymax]
+    #     crop2, _ = resample2(crop2[np.newaxis], spacing=np.array((1.0, 2.0, 2.0)))
+    #     plt.imshow(crop2[0], 'gray')
+    #     plt.savefig(f'figures/test_resample2/crop2_{i}.png', dpi=300)
+    #     plt.close()
 
-    # for i in range(lung_mask.shape[0]):
-    #     if np.sum(lung_mask[i]):
-    #         plt.imshow(lung_mask[i])
-    #         plt.savefig(f'figures/test_resample/lung_{i}.png')
-    #         plt.close()
+    # # for i in range(lung_mask.shape[0]):
+    # #     if np.sum(lung_mask[i]):
+    # #         plt.imshow(lung_mask[i])
+    # #         plt.savefig(f'figures/test_resample/lung_{i}.png')
+    # #         plt.close()
 
-    #         plt.imshow(lung_mask2[i])
-    #         plt.savefig(f'figures/test_resample/lung2_{i}.png')
-    #         plt.close()
+    # #         plt.imshow(lung_mask2[i])
+    # #         plt.savefig(f'figures/test_resample/lung2_{i}.png')
+    # #         plt.close()
             
         
