@@ -14,6 +14,19 @@ import cc3d
 import pandas as pd
 import torch
 import matplotlib.pyplot as plt
+import time
+
+
+def timer_func(func):
+    # This function shows the execution time of 
+    # the function object passed
+    def wrap_func(*args, **kwargs):
+        t1 = time.time()
+        result = func(*args, **kwargs)
+        t2 = time.time()
+        # print(f'Function {func.__name__!r} executed in {(t2-t1):.4f}s')
+        return result, t2-t1
+    return wrap_func
 
 
 def load_itk_image(filename):
@@ -376,7 +389,8 @@ def seperate_two_lung(binary_mask, spacing, max_iter=22, max_ratio=4.8):
     return binary_mask1, binary_mask2
 
 
-def extract_lung(image, spacing, save_path):
+@timer_func
+def extract_lung(image, spacing):
     """
     Preprocess pipeline for extracting the lung from the raw 3D CT image.
     image: 3D numpy array of raw HU values from CT series in [z, y, x] order.
@@ -412,6 +426,7 @@ def extract_lung(image, spacing, save_path):
     return (binary_mask1, binary_mask2, has_lung)
 
 
+@timer_func
 def HU2uint8(image, HU_min=-1200.0, HU_max=600.0, HU_nan=-2000.0):
     """
     Convert HU unit into uint8 values. First bound HU values by predfined min
@@ -497,7 +512,7 @@ def apply_mask(image, binary_mask1, binary_mask2, pad_value=170,
 
     return image_new
 
-
+@timer_func
 def resample(image, spacing, new_spacing=[1.0, 1.0, 1.0], order=1):
     """
     Resample image from the original spacing to new_spacing, e.g. 1x1x1
@@ -543,7 +558,7 @@ def resample2(image, spacing, new_spacing=[1.0, 1.0, 1.0], order=1, mode='trilin
 
 
 
-
+@timer_func
 def get_lung_box(binary_mask, new_shape, margin=5):
     """
     Get the lung barely surrounding the lung based on the binary_mask and the
@@ -633,73 +648,56 @@ def auxiliary_segment(image):
     return sitk.GetArrayFromImage(final_mask)
 
 
-def preprocess_op(ct_img, spacing):
-    import time
-    t1 = time.time()
-    img = HU2uint8(ct_img)
+def preprocess_op(ct_img, spacing, nod_mask=None):
+    img, t1 = HU2uint8(ct_img)
 
     # Extract lung mask
-    t2 = time.time()
-    binary_mask1, binary_mask2, has_lung = extract_lung(ct_img, spacing)
+    # TODO: change to original
+    (binary_mask1, binary_mask2, has_lung), t2 = extract_lung(ct_img, spacing)
     lung_mask = np.where(binary_mask1+binary_mask2>0, 1, 0)
-    # seg_img = img
     seg_img = lung_mask * img
-    # for i in range(lung_mask.shape[0]):
-    #     if np.sum(lung_mask[i]):
-    #         plt.imshow(lung_mask[i])
-    #         plt.show()
-    t3 = time.time()
+    
+    # resample image
+    (seg_img, resampled_spacing), t3 = resample(seg_img, spacing, order=3)
+    # (resample_img, resampled_spacing), _ = resample(img, spacing, order=3)
 
-    # resample
-    seg_img1, resampled_spacing = resample2(seg_img, spacing, order=3)
-    img1, resampled_spacing = resample2(img, spacing, order=3)
-    resampled_lung_mask1, resampled_spacing = resample2(lung_mask, spacing, order=3)
-    # seg_img2, resampled_spacing = resample2(seg_img, spacing, order=3, mode='trilinear')
-    resampled_lung_mask2, resampled_spacing = resample2(lung_mask, spacing, order=3, mode='nearest')
-    resampled_lung_mask1 = np.where(resampled_lung_mask1>0, 1, 0)
-    resampled_lung_mask2 = np.where(resampled_lung_mask2>0, 1, 0)
-    img1 = resampled_lung_mask1 * img1
-    # seg_img2 = resampled_lung_mask2 * seg_img2
-    lung_mask = resampled_lung_mask1
-    t4 = time.time()
+    # resample mask
+    if nod_mask is not None:
+        seg_nod_mask = np.zeros(seg_img.shape, dtype=np.uint8)
+        nod_mask = cc3d.connected_components(nod_mask, connectivity=26)
+        for i in range(int(nod_mask.max())):
+            mask = (nod_mask == (i + 1)).astype(np.uint8)
+            mask, _ = resample(mask, spacing, order=3)
+            seg_nod_mask[mask > 0.5] = i + 1
+        resample_lung_mask, _ = resample2(lung_mask, spacing, mode='nearest')
     
     # lung masking
-    lung_box = get_lung_box(lung_mask, seg_img1.shape)
+    lung_box, t4 = get_lung_box(lung_mask, seg_img1.shape)
     z_min, z_max = lung_box[0]
     y_min, y_max = lung_box[1]
     x_min, x_max = lung_box[2]
     seg_img1 = seg_img1[z_min:z_max, y_min:y_max, x_min:x_max]
-    # seg_img2 = seg_img2[z_min:z_max, y_min:y_max, x_min:x_max]
     img1 = img1[z_min:z_max, y_min:y_max, x_min:x_max]
-    t5 = time.time()
 
-    print(f'HU->Image {t2-t1}')
-    print(f'resample {t3-t2}')
-    print(f'Extract lung mask {t4-t3}')
-    print(f'lung masking {t5-t4}')
-    return seg_img1, lung_mask, img1, resampled_lung_mask2
+    print(f'HU->Image {t1}')
+    print(f'Extract lung mask {t2}')
+    print(f'Image resample {t3}')
+    print(f'lung masking {t4}')
+    return seg_img1, lung_mask, img1, resample_lung_mask
 
 
 def preprocess(p_list):
     total_annots = []
     total_df = []
     for idx, params in enumerate(p_list):
-        if idx > 3: break
+        # if idx > 3: break
         pid, lung_mask_dir, nod_mask_dir, img_dir, save_dir, do_resample, lung_mask_save_dir = params
         
         print('Preprocessing %s...' % (pid))
-        # if idx > 5:
-        #     break
-        # if '2319683646' not in pid:
-        #     continue
 
         img, origin, spacing = load_itk_image(img_dir)
-        # TODO: Ignore Lung mask temporally
-        # lung_mask, _, _ = load_itk_image(os.path.join(lung_mask_dir, '%s.mhd' % (pid)))
         lung_mask = np.load(lung_mask_dir)
-        # nod_mask, _ = nrrd.read(os.path.join(nod_mask_dir, '%s' % (pid)))
         nod_mask, _, _ = load_itk_image(nod_mask_dir)
-        # nod_mask = np.load(os.path.join(nod_mask_dir, '%s.npy' % (pid)))
         
         # binary_mask1, binary_mask2 = lung_mask == 4, lung_mask == 3
         # binary_mask = binary_mask1 + binary_mask2
@@ -760,6 +758,7 @@ def preprocess(p_list):
         seg_img = seg_img[z_min:z_max, y_min:y_max, x_min:x_max]
         seg_nod_mask = seg_nod_mask[z_min:z_max, y_min:y_max, x_min:x_max]
         resample_lung_mask = resample_lung_mask[z_min:z_max, y_min:y_max, x_min:x_max]
+        
         # np.save(os.path.join(save_dir, '%s_img.npy' % (pid)), resample_img)
         # np.save(os.path.join(save_dir, '%s_lung_box.npy' % (pid)), lung_box)
         # np.save(os.path.join(save_dir, '%s_origin.npy' % (pid)), origin)
@@ -924,51 +923,13 @@ def main():
 
 
 if __name__=='__main__':
-    main()
+    f = rf'C:\Users\test\Desktop\Leon\Datasets\TMH_Nodule-preprocess\merge_wrong\TMH0001\raw\42073869526302648268854926377559511.mhd'
+    mf = rf'C:\Users\test\Desktop\Leon\Datasets\TMH_Nodule-preprocess\merge_wrong\TMH0001\mask\77533790700569093894985644987855377.mhd'
+    ct_img, origin, spacing = load_itk_image(f)
+    mask, origin, spacing = load_itk_image(mf)
+    prep = preprocess_op(ct_img, spacing, mask)
+    # main()
     
 
-    # f = rf'C:\Users\test\Desktop\Leon\Datasets\TMH_Nodule-preprocess\merge\TMH0003\raw\38467158349469692405660363178115017.mhd'
-    # img, origin, spacing = load_itk_image(f)
-    # print(spacing)
-    # pre_img, lung_mask, pre_img2, lung_mask2 = preprocess_op(img, spacing)
-
-    # print(pre_img.shape, img.shape, lung_mask.shape, lung_mask2.shape, pre_img2.shape, spacing)
-    # print(np.max(pre_img), np.max(img), np.max(lung_mask), np.max(lung_mask2), np.max(pre_img2))
-    # for i in range(pre_img.shape[0]):
-    #     print(i)
-    #     plt.imshow(pre_img[i], 'gray')
-    #     # plt.imshow(lung_mask[i], alpha=0.1)
-    #     plt.savefig(f'figures/test_resample2/img_{i}.png', dpi=300)
-    #     plt.close()
-
-    #     plt.imshow(pre_img2[i], 'gray')
-    #     plt.savefig(f'figures/test_resample2/img2_{i}.png', dpi=300)
-    #     plt.close()
-        
-    #     xmin, xmax = int(pre_img.shape[1]*0.25), int(pre_img.shape[1]*0.75)
-    #     ymin, ymax = int(pre_img.shape[2]*0.25), int(pre_img.shape[2]*0.75)
-    #     crop1 = pre_img[i, xmin:xmax, ymin:ymax]
-    #     crop1, _ = resample2(crop1[np.newaxis], spacing=np.array((1.0, 2.0, 2.0)))
-    #     plt.imshow(crop1[0], 'gray')
-    #     plt.savefig(f'figures/test_resample2/crop_{i}.png', dpi=300)
-    #     plt.close()
-        
-    #     xmin, xmax = int(pre_img2.shape[1]*0.25), int(pre_img2.shape[1]*0.75)
-    #     ymin, ymax = int(pre_img2.shape[2]*0.25), int(pre_img2.shape[2]*0.75)
-    #     crop2 = pre_img2[i, xmin:xmax, ymin:ymax]
-    #     crop2, _ = resample2(crop2[np.newaxis], spacing=np.array((1.0, 2.0, 2.0)))
-    #     plt.imshow(crop2[0], 'gray')
-    #     plt.savefig(f'figures/test_resample2/crop2_{i}.png', dpi=300)
-    #     plt.close()
-
-    # # for i in range(lung_mask.shape[0]):
-    # #     if np.sum(lung_mask[i]):
-    # #         plt.imshow(lung_mask[i])
-    # #         plt.savefig(f'figures/test_resample/lung_{i}.png')
-    # #         plt.close()
-
-    # #         plt.imshow(lung_mask2[i])
-    # #         plt.savefig(f'figures/test_resample/lung2_{i}.png')
-    # #         plt.close()
             
         
