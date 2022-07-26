@@ -41,7 +41,7 @@ data_config_LIDC = {
 
 data_config = {
     # put combined LUNA16 .mhd files into one folder
-    'data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/merge'),
+    'data_dir': os.path.join(BASE, rf'C:\Users\test\Desktop\Leon\Datasets\TMH_Nodule-preprocess\merge_wrong'),
 
     'ori_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/preprocess_old2'),
 
