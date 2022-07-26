@@ -855,13 +855,32 @@ def preprocess(p_list):
     # f = rf'C:\Users\test\Desktop\Leon\Weekly\0530\a2.csv'
     # total_df.to_csv(f, index=False)
 
+    all_min_time, all_max_time, all_mean_time, all_std_time = 0, 0 ,0, 0
     for process_name in total_time:
         print(process_name)
         print(30*'-')
-        print(f'{np.min(total_time[process_name]):.4f}')
-        print(f'{np.max(total_time[process_name]):.4f}')
-        print(f'{np.mean(total_time[process_name]):.4f} \u00B1 {np.std(total_time[process_name]):.4f}')
+        min_time = np.min(total_time[process_name])
+        max_time = np.max(total_time[process_name])
+        mean_time = np.mean(total_time[process_name])
+        std_time = np.std(total_time[process_name])
+
+        all_min_time += min_time
+        all_max_time += max_time
+        all_mean_time += mean_time
+        all_std_time += std_time
+
+        print(f'Min {min_time:.4f}')
+        print(f'Max {max_time:.4f}')
+        print(f'Mean {mean_time:.4f} \u00B1 {std_time:.4f}')
         print('')
+        
+    print('Total')
+    print(f'{all_min_time}')
+    print(f'{all_max_time}')
+    print(f'{all_mean_time}')
+    print(f'{all_std_time}')
+    
+
 
 def get_nodule_center(nodule_volume):
     zs, ys, xs = np.where(nodule_volume)
