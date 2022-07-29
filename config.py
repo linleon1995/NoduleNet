@@ -43,16 +43,16 @@ data_config = {
     # put combined LUNA16 .mhd files into one folder
     'data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/merge'),
 
-    'ori_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/preprocess_old2'),
+    'ori_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/preprocess_new'),
 
     # directory for putting all preprocessed results for training to this path
-    'preprocessed_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet'),
+    'preprocessed_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/preprocess_new'),
 
     # put annotation downloaded from LIDC to this path
     'annos_dir': None,
 
     # put lung mask downloaded from LUNA16 to this path
-    'lung_mask_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/torch'),
+    'lung_mask_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/lung_mask_vol'),
 
     # Directory for saving intermediate results
     'ctr_arr_save_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/ctr'),
@@ -157,9 +157,10 @@ train_config = {
     'epoch_mask': 40,
     'num_workers': 2,
 
-    'train_set_list': ['split/tmh/3_train.csv'],
-    'val_set_list': ['split/tmh/3_val.csv'],
-    'test_set_name': 'split/tmh/4_val.csv',
+    'train_set_list': ['split/tmh_old/4_train.csv'],
+    'val_set_list': ['split/tmh_old/4_val.csv'],
+    'test_set_name': 'split/tmh_old/4_val.csv',
+
     # 'train_set_list': ['split/3_train.csv'],
     # 'val_set_list': ['split/3_val.csv'],
     # 'test_set_name': 'split/3_val.csv',
@@ -177,7 +178,7 @@ elif train_config['optimizer'] == 'RMSprop':
 
 
 train_config['RESULTS_DIR'] = os.path.join(train_config['ROOT_DIR'], 'results')
-train_config['out_dir'] = os.path.join(train_config['RESULTS_DIR'], 'cross_val_test')
+train_config['out_dir'] = os.path.join(train_config['RESULTS_DIR'], 'cross_val_test_old')
 train_config['initial_checkpoint'] = None #train_config['out_dir'] + '/model/027.ckpt'
 train_config['initial_checkpoint'] = '200.ckpt' #train_config['out_dir'] + '/model/027.ckpt'
 train_config['initial_checkpoint'] = 'results/cross_val_test/model/4_train/260.ckpt' #train_config['out_dir'] + '/model/027.ckpt'

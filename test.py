@@ -57,7 +57,7 @@ parser.add_argument("--test-set-name", type=str, default=config['test_set_name']
                     help="path to save the results")
 
 
-def main(train_set_name):
+def main(fold):
     logging.basicConfig(format='[%(levelname)s][%(asctime)s] %(message)s', level=logging.INFO)
     args = parser.parse_args()
     # params_eye_L = np.load('weights/params_eye_L.npy').item()
@@ -67,12 +67,15 @@ def main(train_set_name):
     if args.mode == 'eval':
         data_dir = config['preprocessed_data_dir']
         # TODO:
-        test_set_name = args.test_set_name
+        # test_set_name = args.test_set_name
+        test_set_name = f'split/tmh_old/{fold}_val.csv'
+        # test_set_name = f'split/tmh_old/extra_data.csv'
+
         num_workers = 0
         # initial_checkpoint = args.weight
         net = args.net
         out_dir = args.out_dir
-        save_dir = os.path.join(out_dir, train_set_name)
+        save_dir = os.path.join(out_dir, f'{fold}_train')
         initial_checkpoint = os.path.join(
             save_dir, 'model', '260.ckpt')
 
@@ -119,7 +122,7 @@ def eval(net, dataset, save_dir=None):
     # TODO:
     out_dir = os.path.split(save_dir)[0]
     fold = os.path.split(dataset.set_name)[1].split('_')[0]
-    save_dir = os.path.join(save_dir, 'no_cls3')
+    save_dir = os.path.join(save_dir, 'no_cls_new_260')
     os.makedirs(save_dir, exist_ok=True)
     net.set_mode('eval')
     net.use_mask = True
@@ -143,7 +146,8 @@ def eval(net, dataset, save_dir=None):
     for i, (input, truth_bboxes, truth_labels, truth_masks, mask, image) in enumerate(dataset):
         # if i in [0, 1, 10]: continue
         # if i <4: continue
-        # if i>3: break
+        # if i>2: break
+        # if i != 4: continue
         try:
             D, H, W = image.shape
             pid = dataset.filenames[i]
@@ -210,13 +214,12 @@ def eval(net, dataset, save_dir=None):
                     lung_mask_vol = np.load(
                         os.path.join(lung_mask_dir, f'{pid}_lung_mask.npy'))
                     lung_mask_vol = pad2factor(lung_mask_vol)
+                    # NC_ckpt = os.path.join(
+                    #     out_dir, 
+                    #     'run_060', fold, 'ckpt_best.pth')
                     NC_ckpt = os.path.join(
                         out_dir, 
-                        'run_060', fold, 'ckpt_best.pth')
-                    # NC_ckpt = os.path.join(
-                    #     out_dir.replace('cross_val_test', 'cross_val_test_old'), 
-                    #     'run_047', fold, 'ckpt_best.pth')
-                    # NC_ckpt = rf'ckpt_best.pth'
+                        'run_047', fold, 'ckpt_best.pth')
                     pred_index, post_time, cls_time = simple_post_processor(
                             input.cpu().detach().numpy()[0, 0], 
                             gt_mask[0], 
@@ -232,10 +235,13 @@ def eval(net, dataset, save_dir=None):
                     keep_indices =  np.unique(pred_index)[1:]
                     keep_mask_labels = np.unique(np.array(mapping, 'int')[keep_indices])
                     ensembles = ensembles[keep_mask_labels-1]
-
+                    pred_mask = cc3d.connected_components(pred_index, connectivity=26)
                     print(f'After process: {np.unique(pred_mask*gt_mask[0])[1:]}')
 
                 # compute average precisions
+                # TODO:
+                # print(np.unique(pred_index), len(np.unique(pred_index)))
+                # print(np.unique(pred_mask), len(np.unique(pred_mask)))
                 ap, dice = average_precision(gt_mask, pred_mask)
                 # TODO: 
                 aps.append(ap)
@@ -248,7 +254,7 @@ def eval(net, dataset, save_dir=None):
                 pred_mask = np.zeros((input[0].shape))
             
             np.save(os.path.join(save_dir, '%s.npy' % (pid)), pred_mask)
-
+            row_df = []
             # # TODO: 
 
             b_pred_mask = np.int32(pred_index)
@@ -270,10 +276,14 @@ def eval(net, dataset, save_dir=None):
             # image.shape, zmin, zmax, ymin, ymax, xmin, xmax)
 
             ori_img_shape = image.shape
-            resample_mask[zmin:zmax, ymin:ymax, xmin:xmax] = \
+            resample_mask = \
                 b_gt_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
-            resample_pred[zmin:zmax, ymin:ymax, xmin:xmax] = \
+            resample_pred = \
                 b_pred_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
+            # resample_mask[zmin:zmax, ymin:ymax, xmin:xmax] = \
+            #     b_gt_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
+            # resample_pred[zmin:zmax, ymin:ymax, xmin:xmax] = \
+            #     b_pred_mask[:ori_img_shape[0], :ori_img_shape[1], :ori_img_shape[2]]
             ############
             print('Saving images and pred mask')
             nodule_visualize(save_dir, pid, resample_ct, resample_mask, resample_pred, 
@@ -388,16 +398,16 @@ def eval(net, dataset, save_dir=None):
     # 'evaluationScript/annotations/LIDC/3_annotation_excluded.csv',
     # dataset.set_name, ensemble_submission_path, os.path.join(eval_dir, 'ensemble'))
         
-    noduleCADEvaluation('evaluationScript/annotations/TMH/annotation_TMH.csv',
-    'evaluationScript/annotations/TMH/annotation_excluded.csv',
+    noduleCADEvaluation('evaluationScript/annotations/TMH_new/annotations.csv',
+    'evaluationScript/annotations/TMH_old/annotation_excluded.csv',
     dataset.set_name, rpn_submission_path, os.path.join(eval_dir, 'rpn'))
 
-    noduleCADEvaluation('evaluationScript/annotations/TMH/annotation_TMH.csv',
-    'evaluationScript/annotations/TMH/annotation_excluded.csv',
+    noduleCADEvaluation('evaluationScript/annotations/TMH_new/annotations.csv',
+    'evaluationScript/annotations/TMH_old/annotation_excluded.csv',
     dataset.set_name, rcnn_submission_path, os.path.join(eval_dir, 'rcnn'))
 
-    noduleCADEvaluation('evaluationScript/annotations/TMH/annotation_TMH.csv',
-    'evaluationScript/annotations/TMH/annotation_excluded.csv',
+    noduleCADEvaluation('evaluationScript/annotations/TMH_new/annotations.csv',
+    'evaluationScript/annotations/TMH_old/annotation_excluded.csv',
     dataset.set_name, ensemble_submission_path, os.path.join(eval_dir, 'ensemble'))
     # print
 
@@ -420,9 +430,20 @@ def eval(net, dataset, save_dir=None):
     if len(classify_time) > 0:
         mean_classify_time = sum(classify_time)/len(classify_time)
         print(f'Average classify time {mean_classify_time} sec. in {len(classify_time)} times')
-    # if len(plot_time) > 0:
-    #     mean_plot_time = sum(plot_time)/len(plot_time)
-    #     print(f'Average plot time {mean_plot_time} sec. in {len(plot_time)} times')
+
+    with open(os.path.join(eval_dir, f'{fold}_result.txt'), 'w+') as fw:
+        fw.write(f'mAP: {np.mean(aps, 0)}\n')
+        fw.write(f'mean dice: {dices.shape} {np.mean(dices):.4f} ({np.std(dices):.4f})\n')
+        fw.write(f'mean dice (exclude fn): {dices[dices != 0].shape} {np.mean(dices[dices != 0]):.4f} ({np.std(dices[dices != 0]):.4f})\n')
+        if len(inference_time) > 0:
+            mean_inference_time = sum(inference_time)/len(inference_time)
+            fw.write(f'Average inference time {mean_inference_time} sec. in {len(inference_time)} times\n')
+        if len(post_process_time) > 0:
+            mean_post_time = sum(post_process_time)/len(post_process_time)
+            fw.write(f'Average post time {mean_post_time} sec. in {len(post_process_time)} times\n')
+        if len(classify_time) > 0:
+            mean_classify_time = sum(classify_time)/len(classify_time)
+            fw.write(f'Average classify time {mean_classify_time} sec. in {len(classify_time)} times')
 
 
 def nodule_visualize(save_path, pid, vol, target_vol_category, pred_vol_category, 
@@ -498,9 +519,8 @@ def eval_single(net, input):
  
 
 if __name__ == '__main__':
-    # for idx in range(4):
-    #     set_name = f'{idx}_train'
-    #     main(set_name)
-    set_name = f'{4}_train'
-    main(set_name)
+    # for fold in range(4,5):
+    #     main(fold)
+    fold = 4
+    main(fold)
 
