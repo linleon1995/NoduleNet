@@ -46,7 +46,7 @@ data_config = {
     'ori_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet/preprocess_old2'),
 
     # directory for putting all preprocessed results for training to this path
-    'preprocessed_data_dir': os.path.join(BASE, rf'TMH-Nodule/TMH-preprocess/nodulenet'),
+    'preprocessed_data_dir': os.path.join(BASE, rf'C:\Users\test\Desktop\Leon\Datasets\TMH_Nodule-preprocess\nodulenet\preprocess'),
 
     # put annotation downloaded from LIDC to this path
     'annos_dir': None,

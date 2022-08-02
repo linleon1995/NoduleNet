@@ -749,12 +749,6 @@ def preprocess_op(ct_img, spacing, nod_mask=None):
     seg_img = seg_img[z_min:z_max, y_min:y_max, x_min:x_max]
     resample_img = resample_img[z_min:z_max, y_min:y_max, x_min:x_max]
 
-    # print(f'HU to Image {t1}')
-    # print(f'Extract lung mask {t2}')
-    # print(f'Image resample {t3}')
-    # print(f'Mask resample {t4}')
-    # print(f'Lung mask resample {t5}')
-    # print(f'Get lung box {t6}')
     preprocess_time = {
         'HU2Image': t1,
         'Lung_Mask': t2,
@@ -774,7 +768,7 @@ def preprocess(p_list):
 
     total_time = {}
     for idx, params in enumerate(p_list):
-        if idx > 1: break
+        # if idx > 1: break
         pid, nod_mask_dir, img_dir, save_dir, do_resample, lung_mask_save_dir = params
         
         print('Preprocessing %s...' % (pid))
@@ -873,13 +867,161 @@ def preprocess(p_list):
         print(f'Max {max_time:.4f}')
         print(f'Mean {mean_time:.4f} \u00B1 {std_time:.4f}')
         print('')
-        
+
     print('Total')
-    print(f'{all_min_time}')
-    print(f'{all_max_time}')
-    print(f'{all_mean_time}')
-    print(f'{all_std_time}')
+    print(f'min {all_min_time}')
+    print(f'max {all_max_time}')
+    print(f'mean {all_mean_time}')
+    print(f'std {all_std_time}')
     
+
+
+def preprocess_op_new(ct_img, spacing, nod_mask=None):
+    img, t1 = HU2uint8(ct_img)
+
+    # Extract lung mask
+    @timer_func
+    def get_lung_mask(img):
+        (binary_mask1, binary_mask2, has_lung), _ = extract_lung(img, spacing)
+        lung_mask_vol = np.where(binary_mask1+binary_mask2>0, 1, 0)
+        z_range, y_range, x_range = np.where(lung_mask_vol)
+        z_min, z_max = z_range.min(), z_range.max()
+        # y_min, y_max = lung_box[1]
+        # x_min, x_max = lung_box[2]
+        lung_mask_vol = scipy.ndimage.binary_dilation(
+            lung_mask_vol, structure=np.ones((7, 7, 7)), iterations=2)
+        lung_mask_vol[:z_min] = 0
+        lung_mask_vol[z_max:] = 0
+
+        # filename = f'ff{ct_img.shape[0]}'
+        # save_dir = rf'C:\Users\test\Desktop\Leon\Weekly\0711\lung_dilated7_iter2_new'
+        # sub_dir = os.path.join(save_dir, filename)
+        # os.makedirs(sub_dir, exist_ok=True)
+        # for idx, (x, l) in enumerate(zip(img, lung_mask_vol)):
+        #     if np.sum(l):
+        #         plt.imshow(x, 'gray')
+        #         plt.imshow(l, alpha=0.2)
+        #         plt.savefig(os.path.join(sub_dir, f'{filename}-{idx}.png'))
+        #         plt.close()
+        return lung_mask_vol
+
+    lung_mask, t2 = get_lung_mask(ct_img)
+    # seg_img = lung_mask * img
+    
+    # resample image
+    (resample_img, resampled_spacing), t3 = resample2(img, spacing, mode='trilinear')
+
+    # resample mask
+    if nod_mask is not None:
+        nod_mask = cc3d.connected_components(nod_mask, connectivity=26)
+        nod_mask = np.int32(nod_mask)
+        (nod_mask, _), t4 = resample2(nod_mask, spacing, mode='nearest')
+    (resample_lung_mask, _), t5 = resample2(lung_mask, spacing, mode='nearest')
+    seg_img = resample_lung_mask * resample_img
+    
+    # lung masking
+    lung_box, t6 = get_lung_box(resample_lung_mask, seg_img.shape)
+    z_min, z_max = lung_box[0]
+    y_min, y_max = lung_box[1]
+    x_min, x_max = lung_box[2]
+    seg_img = seg_img[z_min:z_max, y_min:y_max, x_min:x_max]
+    resample_img = resample_img[z_min:z_max, y_min:y_max, x_min:x_max]
+    if nod_mask is not None:
+        nod_mask = nod_mask[z_min:z_max, y_min:y_max, x_min:x_max]
+
+    preprocess_time = {
+        'HU2Image': t1,
+        'Lung_Mask': t2,
+        'Resample': t3,
+        'Lung_box': t6,
+    }
+    return seg_img, nod_mask, lung_box, resample_img, resample_lung_mask, preprocess_time
+
+
+
+def preprocess_new(p_list):
+    total_annots = []
+    total_df = []
+
+    @timer_func
+    def load_itk_and_count_time(img_dir):
+        return load_itk_image(img_dir)
+
+    total_time = {}
+    for idx, params in enumerate(p_list):
+        # if idx > 2: break
+        pid, nod_mask_dir, img_dir, save_dir, do_resample, lung_mask_save_dir = params
+        
+        print('Preprocessing %s...' % (pid))
+
+        (ct_img, origin, spacing), load_time = load_itk_and_count_time(img_dir)
+        # lung_mask = np.load(lung_mask_dir)
+        nod_mask, _, _ = load_itk_image(nod_mask_dir)
+        
+        
+        preprocess_output = preprocess_op_new(ct_img, spacing, nod_mask)
+        seg_img, seg_nod_mask, lung_box, resample_img, resample_lung_mask, preprocess_time = preprocess_output
+        preprocess_time['load'] = load_time
+        for process_name in preprocess_time:
+            if process_name in total_time:
+                total_time[process_name].append(preprocess_time[process_name])
+            else:
+                total_time[process_name] = [preprocess_time[process_name]]
+
+        np.save(os.path.join(save_dir, '%s_img.npy' % (pid)), resample_img)
+        np.save(os.path.join(save_dir, '%s_lung_box.npy' % (pid)), lung_box)
+        np.save(os.path.join(save_dir, '%s_origin.npy' % (pid)), origin)
+        # np.save(os.path.join(save_dir, '%s_spacing.npy' % (pid)), resampled_spacing)
+        # np.save(os.path.join(save_dir, '%s_ebox_origin.npy' % (pid)), np.array((z_min, y_min, x_min)))
+        nrrd.write(os.path.join(save_dir, '%s_clean.nrrd' % (pid)), seg_img)
+        nrrd.write(os.path.join(save_dir, '%s_mask.nrrd' % (pid)), seg_nod_mask)
+        np.save(os.path.join(lung_mask_save_dir, '%s_lung_mask.npy' % (pid)), resample_lung_mask)
+
+        annots = get_annotations(seg_nod_mask, origin, spacing)
+        # total_annots.extend(annots)
+        for nodule in annots:
+            row_df = np.array([
+                pid, nodule[0][2], nodule[0][1], nodule[0][0], nodule[1]])
+            total_df.append(row_df)
+
+        print(f'Image value range [{seg_img.min()} {seg_img.max()}] shape {seg_img.shape}')
+        print('number of nodules before: %s, afeter preprocessing: %s' % (nod_mask.max(), seg_nod_mask.max()))
+        print('Finished %s' % (pid))
+        print()
+
+    total_df = np.stack(total_df, axis=0)
+    total_df = pd.DataFrame(
+        total_df,
+        columns=['seriesuid', 'coordX', 'coordY', 'coordZ', 'diameter_mm']
+    )
+    total_df['seriesuid'] = pd.Series(total_df['seriesuid'], dtype="string")
+    # f = rf'C:\Users\test\Desktop\Leon\Weekly\0530\a2.csv'
+    total_df.to_csv(os.path.join(save_dir, 'annotations.csv'), index=False)
+
+    all_min_time, all_max_time, all_mean_time, all_std_time = 0, 0 ,0, 0
+    for process_name in total_time:
+        print(process_name)
+        print(30*'-')
+        min_time = np.min(total_time[process_name])
+        max_time = np.max(total_time[process_name])
+        mean_time = np.mean(total_time[process_name])
+        std_time = np.std(total_time[process_name])
+
+        all_min_time += min_time
+        all_max_time += max_time
+        all_mean_time += mean_time
+        all_std_time += std_time
+
+        print(f'Min {min_time:.4f}')
+        print(f'Max {max_time:.4f}')
+        print(f'Mean {mean_time:.4f} \u00B1 {std_time:.4f}')
+        print('')
+
+    print('Total')
+    print(f'min {all_min_time}')
+    print(f'max {all_max_time}')
+    print(f'mean {all_mean_time}')
+    print(f'std {all_std_time}')
 
 
 def get_nodule_center(nodule_volume):
@@ -939,7 +1081,7 @@ def get_annotations(volume, origin_xyz, spacing_xyz, direction=np.eye(3)):
 
 def generate_label(p_list):
     for params in p_list:
-        pid, lung_mask_dir, nod_mask_dir, img_dir, save_dir, do_resample, lung_mask_save_dir = params
+        pid, nod_mask_dir, img_dir, save_dir, do_resample, lung_mask_save_dir = params
         masks, _ = nrrd.read(os.path.join(save_dir, '%s_mask.nrrd' % (pid)))
 
         bboxes = []
@@ -970,9 +1112,8 @@ def main():
     print('nod mask dir', nod_mask_dir)
     print('save dir ', save_dir)
     
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-        
+    os.makedirs(save_dir, exist_ok=True)
+    
     params_lists = []
     f_list = get_files(img_dir, 'mhd')
     img_list, mask_list = [], []
@@ -998,7 +1139,7 @@ def main():
    
 
     preprocess(params_lists)
-    # generate_label(params_lists)
+    generate_label(params_lists)
 
     # pool = Pool(processes=10)
     # pool.map(preprocess, params_lists)

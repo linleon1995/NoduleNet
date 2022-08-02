@@ -18,6 +18,7 @@ def lung_segmentation(ct_scans):
         else:
             binary[i] = cleared
     
+    # TODO: >=python3.7 to support cc3d.largest_k
     labels_out, N = cc3d.largest_k(binary, k=2, connectivity=26, delta=0, return_N=True,)
 
     if (labels_out == 1).sum()/(labels_out == 2).sum() < 0.1:
