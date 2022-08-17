@@ -30,6 +30,8 @@ class MaskReader(Dataset):
             self.filenames = np.genfromtxt(set_name, dtype=str)
         elif set_name.endswith('.npy'):
             self.filenames = np.load(set_name)
+        if self.filenames.size == 1:
+            self.filenames = [self.filenames]
 
         if mode != 'test':
             self.filenames = [f for f in self.filenames if (f not in self.blacklist)]
